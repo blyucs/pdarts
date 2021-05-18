@@ -160,8 +160,24 @@ class Network(nn.Module):
             self.alphas_normal,
             self.alphas_reduce,
         ]
-    
+        self.normal_log_prob = Variable(torch.zeros(k, dtype = torch.float), requires_grad = True)
+        self.reduce_log_prob = Variable(torch.zeros(k, dtype = torch.float), requires_grad = True)
+
     def arch_parameters(self):
         return self._arch_parameters
 
+    @property
+    def probs_over_ops(self):
+        normal_probs = F.softmax(self.alphas_normal, dim=1)  # softmax to probability
+        reduce_probs = F.softmax(self.alphas_reduce, dim=1)
+        return normal_probs, reduce_probs
 
+    def set_log_prob(self):
+        normal_probs, reduce_probs = self.probs_over_ops
+        normal_sample = torch.multinomial(normal_probs, 1)
+        reduce_sample = torch.multinomial(reduce_probs, 1)
+        self.normal_log_prob = torch.log(torch.gather(normal_probs,1,normal_sample))
+        self.reduce_log_prob = torch.log(torch.gather(reduce_probs,1,reduce_sample))
+        # self.log_prob = torch.log(probs[sample])
+        # self.current_prob_over_ops = probs
+        return normal_sample, reduce_sample

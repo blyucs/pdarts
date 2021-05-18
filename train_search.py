@@ -14,6 +14,7 @@ import torchvision.datasets as dset
 import torch.backends.cudnn as cudnn
 import copy
 from model_search import Network
+from model import NetworkCIFAR
 from genotypes import PRIMITIVES
 from genotypes import Genotype
 
@@ -26,19 +27,20 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=50, help='report frequency')
-parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
+# parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=10, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
 parser.add_argument('--cutout_length', type=int, default=16, help='cutout length')
 parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path probability')
-parser.add_argument('--save', type=str, default='/tmp/checkpoints/', help='experiment path')
+parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experiment path')
 parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
-parser.add_argument('--tmp_data_dir', type=str, default='/tmp/cache/', help='temp data dir')
+parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
 parser.add_argument('--note', type=str, default='try', help='note for this run')
 parser.add_argument('--dropout_rate', action='append', default=[], help='dropout rate of skip connect')
 parser.add_argument('--add_width', action='append', default=['0'], help='add channels')
@@ -63,6 +65,24 @@ if args.cifar100:
 else:
     CIFAR_CLASSES = 10
     data_folder = 'cifar-10-batches-py'
+
+if len(args.add_width) == 3:
+    add_width = args.add_width
+else:
+    add_width = [0, 0, 0]
+if len(args.add_layers) == 3:
+    add_layers = args.add_layers
+else:
+    add_layers = [0, 6, 12]
+if len(args.dropout_rate) ==3:
+    drop_rate = args.dropout_rate
+else:
+    drop_rate = [0.0, 0.0, 0.0]
+
+# To be moved to args
+num_to_keep = [5, 3, 1]
+num_to_drop = [3, 2, 2]
+
 def main():
     if not torch.cuda.is_available():
         logging.info('No GPU device available')
@@ -105,22 +125,9 @@ def main():
         switches.append([True for j in range(len(PRIMITIVES))])
     switches_normal = copy.deepcopy(switches)
     switches_reduce = copy.deepcopy(switches)
-    # To be moved to args
-    num_to_keep = [5, 3, 1]
-    num_to_drop = [3, 2, 2]
-    if len(args.add_width) == 3:
-        add_width = args.add_width
-    else:
-        add_width = [0, 0, 0]
-    if len(args.add_layers) == 3:
-        add_layers = args.add_layers
-    else:
-        add_layers = [0, 6, 12]
-    if len(args.dropout_rate) ==3:
-        drop_rate = args.dropout_rate
-    else:
-        drop_rate = [0.0, 0.0, 0.0]
-    eps_no_archs = [10, 10, 10]
+
+    # eps_no_archs = [10, 10, 10]
+    eps_no_archs = [3, 3, 3]
     for sp in range(len(num_to_keep)):
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
         model = nn.DataParallel(model)
@@ -143,20 +150,22 @@ def main():
         epochs = args.epochs
         eps_no_arch = eps_no_archs[sp]
         scale_factor = 0.2
+        # cur_sub_model = get_cur_model(model,switches_normal,switches_reduce,num_to_keep,num_to_drop,sp)
         for epoch in range(epochs):
             scheduler.step()
             lr = scheduler.get_lr()[0]
             logging.info('Epoch: %d lr: %e', epoch, lr)
             epoch_start = time.time()
             # training
-            if epoch < eps_no_arch:
+            # if epoch < eps_no_arch:
+            if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
-                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=False)
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, sp, train_arch=False )
             else:
                 model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
                 model.module.update_p()                
-                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True)
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, sp, train_arch=True)
             logging.info('Train_acc %f', train_acc)
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
@@ -221,7 +230,7 @@ def main():
             keep_reduce = [0, 1]
             n = 3
             start = 2
-            for i in range(3):
+            for i in range(3):  # 选出最大的两个前序节点
                 end = start + n
                 tbsn = normal_final[start:end]
                 tbsr = reduce_final[start:end]
@@ -261,7 +270,84 @@ def main():
                 genotype = parse_network(switches_normal, switches_reduce)
                 logging.info(genotype)              
 
-def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True):
+def get_cur_model(model,sp):
+    sm_dim = -1
+
+    switches_normal = []
+    switches_reduce = []
+    for i in range(14):
+        switches_normal.append([True for j in range(len(PRIMITIVES))])
+        switches_reduce.append([True for j in range(len(PRIMITIVES))])
+    # switches_normal_2 = copy.deepcopy(switches_normal)
+    # switches_reduce_2 = copy.deepcopy(switches_reduce)
+    arch_param = model.module.arch_parameters()
+    normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
+    reduce_prob = F.softmax(arch_param[1], dim=sm_dim).data.cpu().numpy()
+    normal_final = [0 for idx in range(14)]
+    reduce_final = [0 for idx in range(14)]
+
+    normal_sel_index, reduce_sel_index = model.module.set_log_prob()
+
+    # switches_normal_2[normal_sel_index.data.cpu().numpy()] = False
+
+    # remove all Zero operations
+    for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
+        # if switches_normal_2[i][0] == True:
+        #     normal_prob[i][0] = 0
+        normal_final[i] = max(normal_prob[i])
+        # idx = np.argmax(normal_prob[i], axis = 0)
+        # model.module.normal_log_prob[i] = torch.log(torch.from_numpy(np.array(normal_prob[i][idx])))
+        for j in range(8):
+            if j != idx:
+                switches_normal[i][j] = False
+        # if switches_reduce_2[i][0] == True:
+        #     reduce_prob[i][0] = 0
+
+    for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
+        reduce_final[i] = max(reduce_prob[i])
+        # idx = np.argmax(reduce_prob[i], axis = 0)
+        # model.module.reduce_log_prob[i] = torch.log(torch.from_numpy(np.array(reduce_prob[i][idx])))
+        for j in range(8):
+            if j != idx:
+                switches_reduce[i][j] = False
+        # Generate Architecture, similar to DARTS
+    keep_normal = [0, 1]
+    keep_reduce = [0, 1]
+    n = 3
+    start = 2
+    for i in range(3):  # 选出最大的两个前序节点
+        end = start + n
+        tbsn = normal_final[start:end]
+        tbsr = reduce_final[start:end]
+        edge_n = sorted(range(n), key=lambda x: tbsn[x])
+        keep_normal.append(edge_n[-1] + start)
+        keep_normal.append(edge_n[-2] + start)
+        edge_r = sorted(range(n), key=lambda x: tbsr[x])
+        keep_reduce.append(edge_r[-1] + start)
+        keep_reduce.append(edge_r[-2] + start)
+        start = end
+        n = n + 1
+    # set switches according the ranking of arch parameters
+    for i in range(14):
+        if not i in keep_normal:
+            for j in range(len(PRIMITIVES)):
+                switches_normal[i][j] = False
+        if not i in keep_reduce:
+            for j in range(len(PRIMITIVES)):
+                switches_reduce[i][j] = False
+
+    # translate switches into genotype
+    # genotype = parse_network(switches_normal, switches_reduce)
+    # logging.info(genotype)
+    # sub_model = Network(args.init_channels, CIFAR_CLASSES, args.layers + int(add_layers[sp]), False, genotype)
+    sub_model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
+    return sub_model
+
+baseline_flg = None
+baseline = 0
+baseline_decay_weight = 0.1
+rl_batch_size = 10
+def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, sp, train_arch=True):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -271,22 +357,63 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
         n = input.size(0)
         input = input.cuda()
         target = target.cuda(non_blocking=True)
-        if train_arch:
-            # In the original implementation of DARTS, it is input_search, target_search = next(iter(valid_queue), which slows down
-            # the training when using PyTorch 0.4 and above. 
-            try:
-                input_search, target_search = next(valid_queue_iter)
-            except:
-                valid_queue_iter = iter(valid_queue)
-                input_search, target_search = next(valid_queue_iter)
-            input_search = input_search.cuda()
-            target_search = target_search.cuda(non_blocking=True)
-            optimizer_a.zero_grad()
-            logits = model(input_search)
-            loss_a = criterion(logits, target_search)
-            loss_a.backward()
-            nn.utils.clip_grad_norm_(model.module.arch_parameters(), args.grad_clip)
-            optimizer_a.step()
+        if step % 50 ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
+            if train_arch:
+                # In the original implementation of DARTS, it is input_search, target_search = next(iter(valid_queue), which slows down
+                # the training when using PyTorch 0.4 and above.
+                try:
+                    input_search, target_search = next(valid_queue_iter)
+                except:
+                    valid_queue_iter = iter(valid_queue)
+                    input_search, target_search = next(valid_queue_iter)
+                input_search = input_search.cuda()
+                target_search = target_search.cuda(non_blocking=True)
+                normal_grad_buffer = []
+                reduce_grad_buffer = []
+                reward_buffer = []
+                for batch_idx in range(rl_batch_size): # 多采集几个网络，测试
+                    # sample the submodel
+                    cur_sub_model = get_cur_model(model,sp)
+                    cur_sub_model.cuda()
+                    cur_sub_model.drop_path_prob = 0
+                    # validat the sub_model
+                    with torch.no_grad():
+                        logits, _ = cur_sub_model(input_search)
+                        prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
+                    if model.module._arch_parameters[0].grad is not None:
+                        model.module._arch_parameters[0].grad.data.zero_()
+                    if model.module._arch_parameters[1].grad is not None:
+                        model.module._arch_parameters[1].grad.data.zero_()
+                    obj_term = 0
+                    for i in range(14):
+                        obj_term = obj_term + model.module.normal_log_prob[i]
+                        obj_term = obj_term + model.module.reduce_log_prob[i]
+                    loss_term = -obj_term
+                    # backward
+                    loss_term.backward()
+                    # take out gradient dict
+                    normal_grad_list = []
+                    reduce_grad_list = []
+                    normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
+                    reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
+                    reward_buffer.append(prec1)
+                avg_reward = sum(reward_buffer) / rl_batch_size
+                if baseline_flg is None:
+                    baseline = avg_reward
+                else:
+                    baseline += baseline_decay_weight * (avg_reward - baseline)
+
+                # for idx in range(14):
+                model.module._arch_parameters[0].grad.data.zero_()
+                model.module._arch_parameters[1].grad.data.zero_()
+                for j in range(rl_batch_size):
+                    model.module._arch_parameters[0].grad.data += (reward_buffer[j] - baseline) * normal_grad_buffer[j]
+                    model.module._arch_parameters[1].grad.data += (reward_buffer[j] - baseline) * reduce_grad_buffer[j]
+                model.module._arch_parameters[0].grad.data /= rl_batch_size
+                model.module._arch_parameters[1].grad.data /= rl_batch_size
+                # apply gradients
+                optimizer_a.step()
+                logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %d', step, avg_reward, baseline)
 
         optimizer.zero_grad()
         logits = model(input)
