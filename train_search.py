@@ -41,7 +41,7 @@ parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-3, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -131,8 +131,10 @@ def main():
     switches_reduce = copy.deepcopy(switches)
 
     # eps_no_archs = [10, 10, 10]
-    eps_no_archs = [1, 1, 1]
+    eps_no_archs = [2, 2, 2]
     for sp in range(len(num_to_keep)):
+        # if sp < 1:
+        #     continue
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
         model = nn.DataParallel(model)
         model = model.cuda()
@@ -146,8 +148,10 @@ def main():
                 args.learning_rate,
                 momentum=args.momentum,
                 weight_decay=args.weight_decay)
+        # optimizer_a = torch.optim.Adam(model.module.arch_parameters(),
+        #             lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
         optimizer_a = torch.optim.Adam(model.module.arch_parameters(),
-                    lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
+                                       lr=args.arch_learning_rate, betas=(0, 0.999), weight_decay=args.arch_weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 optimizer, float(args.epochs), eta_min=args.learning_rate_min)
         sm_dim = -1
@@ -351,7 +355,7 @@ def get_cur_model(model):
 # baseline_flg = None
 baseline = 0
 baseline_decay_weight = 0.99
-rl_batch_size = 20
+rl_batch_size = 10
 def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
@@ -425,6 +429,7 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                 # print(model.module._arch_parameters[0])
                 # print(model.module._arch_parameters[1])
         if not train_arch:
+        # if 0:
             optimizer.zero_grad()
             logits = model(input)
             loss = criterion(logits, target)
