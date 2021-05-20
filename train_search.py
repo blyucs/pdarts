@@ -17,11 +17,13 @@ from model_search import Network
 from model import NetworkCIFAR
 from genotypes import PRIMITIVES
 from genotypes import Genotype
-
+os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
+# os.environ["CUDA_VISIBLE_DEVICES"]="1"   # batchsize
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
 parser.add_argument('--batch_size', type=int, default=96, help='batch size')
+# parser.add_argument('--batch_size', type=int, default=12, help='batch size')
 parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
@@ -38,8 +40,10 @@ parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experi
 parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
-parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
-parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
+# parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-3, help='learning rate for arch encoding')
+# parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
+parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
 parser.add_argument('--note', type=str, default='try', help='note for this run')
 parser.add_argument('--dropout_rate', action='append', default=[], help='dropout rate of skip connect')
@@ -127,7 +131,7 @@ def main():
     switches_reduce = copy.deepcopy(switches)
 
     # eps_no_archs = [10, 10, 10]
-    eps_no_archs = [3, 3, 3]
+    eps_no_archs = [1, 1, 1]
     for sp in range(len(num_to_keep)):
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
         model = nn.DataParallel(model)
@@ -157,15 +161,15 @@ def main():
             logging.info('Epoch: %d lr: %e', epoch, lr)
             epoch_start = time.time()
             # training
-            # if epoch < eps_no_arch:
-            if 0:
+            if epoch < eps_no_arch:
+            # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
-                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, sp, train_arch=False )
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=False )
             else:
                 model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
                 model.module.update_p()                
-                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, sp, train_arch=True)
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True)
             logging.info('Train_acc %f', train_acc)
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
@@ -270,7 +274,7 @@ def main():
                 genotype = parse_network(switches_normal, switches_reduce)
                 logging.info(genotype)              
 
-def get_cur_model(model,sp):
+def get_cur_model(model):
     sm_dim = -1
 
     switches_normal = []
@@ -294,7 +298,7 @@ def get_cur_model(model,sp):
     for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
         # if switches_normal_2[i][0] == True:
         #     normal_prob[i][0] = 0
-        normal_final[i] = max(normal_prob[i])
+        # normal_final[i] = max(normal_prob[i])
         # idx = np.argmax(normal_prob[i], axis = 0)
         # model.module.normal_log_prob[i] = torch.log(torch.from_numpy(np.array(normal_prob[i][idx])))
         for j in range(8):
@@ -304,60 +308,62 @@ def get_cur_model(model,sp):
         #     reduce_prob[i][0] = 0
 
     for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
-        reduce_final[i] = max(reduce_prob[i])
+        # reduce_final[i] = max(reduce_prob[i])
         # idx = np.argmax(reduce_prob[i], axis = 0)
         # model.module.reduce_log_prob[i] = torch.log(torch.from_numpy(np.array(reduce_prob[i][idx])))
         for j in range(8):
             if j != idx:
                 switches_reduce[i][j] = False
         # Generate Architecture, similar to DARTS
-    keep_normal = [0, 1]
-    keep_reduce = [0, 1]
-    n = 3
-    start = 2
-    for i in range(3):  # 选出最大的两个前序节点
-        end = start + n
-        tbsn = normal_final[start:end]
-        tbsr = reduce_final[start:end]
-        edge_n = sorted(range(n), key=lambda x: tbsn[x])
-        keep_normal.append(edge_n[-1] + start)
-        keep_normal.append(edge_n[-2] + start)
-        edge_r = sorted(range(n), key=lambda x: tbsr[x])
-        keep_reduce.append(edge_r[-1] + start)
-        keep_reduce.append(edge_r[-2] + start)
-        start = end
-        n = n + 1
+    # keep_normal = [0, 1]
+    # keep_reduce = [0, 1]
+    # n = 3
+    # start = 2
+    # for i in range(3):  # 选出最大的两个前序节点
+    #     end = start + n
+    #     tbsn = normal_final[start:end]
+    #     tbsr = reduce_final[start:end]
+    #     edge_n = sorted(range(n), key=lambda x: tbsn[x])
+    #     keep_normal.append(edge_n[-1] + start)
+    #     keep_normal.append(edge_n[-2] + start)
+    #     edge_r = sorted(range(n), key=lambda x: tbsr[x])
+    #     keep_reduce.append(edge_r[-1] + start)
+    #     keep_reduce.append(edge_r[-2] + start)
+    #     start = end
+    #     n = n + 1
     # set switches according the ranking of arch parameters
-    for i in range(14):
-        if not i in keep_normal:
-            for j in range(len(PRIMITIVES)):
-                switches_normal[i][j] = False
-        if not i in keep_reduce:
-            for j in range(len(PRIMITIVES)):
-                switches_reduce[i][j] = False
+    # for i in range(14):
+    #     if not i in keep_normal:
+    #         for j in range(len(PRIMITIVES)):
+    #             switches_normal[i][j] = False
+    #     if not i in keep_reduce:
+    #         for j in range(len(PRIMITIVES)):
+    #             switches_reduce[i][j] = False
 
     # translate switches into genotype
     # genotype = parse_network(switches_normal, switches_reduce)
     # logging.info(genotype)
     # sub_model = Network(args.init_channels, CIFAR_CLASSES, args.layers + int(add_layers[sp]), False, genotype)
-    sub_model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
-    return sub_model
+    # sub_model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
+    # return sub_model
+    model.module.set_sub_net(switches_normal, switches_reduce)
 
-baseline_flg = None
+# baseline_flg = None
 baseline = 0
-baseline_decay_weight = 0.1
-rl_batch_size = 10
-def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, sp, train_arch=True):
+baseline_decay_weight = 0.99
+rl_batch_size = 20
+def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    
+    global baseline
     for step, (input, target) in enumerate(train_queue):
         model.train()
         n = input.size(0)
         input = input.cuda()
         target = target.cuda(non_blocking=True)
-        if step % 50 ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
+        # if step % 10 ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
+        if 1:  # 每10个batch ，进行一次RL ， 一次 采10次网络
             if train_arch:
                 # In the original implementation of DARTS, it is input_search, target_search = next(iter(valid_queue), which slows down
                 # the training when using PyTorch 0.4 and above.
@@ -373,12 +379,13 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                 reward_buffer = []
                 for batch_idx in range(rl_batch_size): # 多采集几个网络，测试
                     # sample the submodel
-                    cur_sub_model = get_cur_model(model,sp)
-                    cur_sub_model.cuda()
-                    cur_sub_model.drop_path_prob = 0
+                    get_cur_model(model)
+                    # cur_sub_model.cuda()
+                    # cur_sub_model.drop_path_prob = 0
                     # validat the sub_model
                     with torch.no_grad():
-                        logits, _ = cur_sub_model(input_search)
+                        # logits, _ = cur_sub_model(input_search)
+                        logits= model(input_search)
                         prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
                     if model.module._arch_parameters[0].grad is not None:
                         model.module._arch_parameters[0].grad.data.zero_()
@@ -398,7 +405,7 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                     reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
                     reward_buffer.append(prec1)
                 avg_reward = sum(reward_buffer) / rl_batch_size
-                if baseline_flg is None:
+                if baseline == 0:
                     baseline = avg_reward
                 else:
                     baseline += baseline_decay_weight * (avg_reward - baseline)
@@ -414,23 +421,28 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                 # apply gradients
                 optimizer_a.step()
                 logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %d', step, avg_reward, baseline)
+                model.module.restore_super_net()
+                # print(model.module._arch_parameters[0])
+                # print(model.module._arch_parameters[1])
+        if not train_arch:
+            optimizer.zero_grad()
+            logits = model(input)
+            loss = criterion(logits, target)
 
-        optimizer.zero_grad()
-        logits = model(input)
-        loss = criterion(logits, target)
+            loss.backward()
+            nn.utils.clip_grad_norm_(network_params, args.grad_clip)
+            optimizer.step()
 
-        loss.backward()
-        nn.utils.clip_grad_norm_(network_params, args.grad_clip)
-        optimizer.step()
+            prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
+            objs.update(loss.data.item(), n)
+            top1.update(prec1.data.item(), n)
+            top5.update(prec5.data.item(), n)
 
-        prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
-        objs.update(loss.data.item(), n)
-        top1.update(prec1.data.item(), n)
-        top5.update(prec5.data.item(), n)
-
-        if step % args.report_freq == 0:
-            logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, objs.avg, top1.avg, top5.avg)
-
+            if step % args.report_freq == 0:
+                logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, objs.avg, top1.avg, top5.avg)
+        else:
+            top1.avg = 0
+            objs.avg = 0
     return top1.avg, objs.avg
 
 

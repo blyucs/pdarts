@@ -121,23 +121,37 @@ class Network(nn.Module):
 
         self.global_pooling = nn.AdaptiveAvgPool2d(1)
         self.classifier = nn.Linear(C_prev, num_classes)
-
+        self.forward_type = True
         self._initialize_alphas()
 
     def forward(self, input):
+        # print("fuck %d" % self.forward_type)
         s0 = s1 = self.stem(input)
         for i, cell in enumerate(self.cells):
             if cell.reduction:
                 if self.alphas_reduce.size(1) == 1:
-                    weights = F.softmax(self.alphas_reduce, dim=0)
+                    if self.forward_type == True:
+                        weights = F.softmax(self.alphas_reduce, dim=0)
+                    else:
+                        weights = self.sub_alphas_reduce
                 else:
-                    weights = F.softmax(self.alphas_reduce, dim=-1)
+                    if self.forward_type == True:  #  this
+                        weights = F.softmax(self.alphas_reduce, dim=-1)
+                    else:
+                        weights = self.sub_alphas_reduce
             else:
                 if self.alphas_normal.size(1) == 1:
-                    weights = F.softmax(self.alphas_normal, dim=0)
+                    if self.forward_type == True:
+                        weights = F.softmax(self.alphas_normal, dim=0)
+                    else:
+                        weights = self.sub_alphas_normal
                 else:
-                    weights = F.softmax(self.alphas_normal, dim=-1)
+                    if self.forward_type == True: # this
+                        weights = F.softmax(self.alphas_normal, dim=-1)
+                    else:
+                        weights = self.sub_alphas_normal
             s0, s1 = s1, cell(s0, s1, weights)
+            # print(weights)
         out = self.global_pooling(s1)
         logits = self.classifier(out.view(out.size(0),-1))
         return logits
@@ -156,6 +170,10 @@ class Network(nn.Module):
         num_ops = self.switch_on
         self.alphas_normal = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
         self.alphas_reduce = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
+
+        self.sub_alphas_normal =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
+        self.sub_alphas_reduce =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
+
         self._arch_parameters = [
             self.alphas_normal,
             self.alphas_reduce,
@@ -181,3 +199,20 @@ class Network(nn.Module):
         # self.log_prob = torch.log(probs[sample])
         # self.current_prob_over_ops = probs
         return normal_sample, reduce_sample
+
+    def set_sub_net(self, switch_normal, switch_reduce):
+        for i in range(14):
+            for j in range(8):
+                if switch_normal[i][j]:
+                    self.sub_alphas_normal[i][j] = 1.0
+                else:
+                    self.sub_alphas_normal[i][j] = 0
+
+                if switch_reduce[i][j]:
+                    self.sub_alphas_reduce[i][j] = 1.0
+                else:
+                    self.sub_alphas_reduce[i][j] = 0
+        self.forward_type = False
+
+    def restore_super_net(self):
+        self.forward_type = True
