@@ -29,8 +29,8 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=50, help='report frequency')
-# parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
-parser.add_argument('--epochs', type=int, default=10, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
+# parser.add_argument('--epochs', type=int, default=4, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
@@ -40,6 +40,7 @@ parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experi
 parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
+# parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
@@ -130,8 +131,8 @@ def main():
     switches_normal = copy.deepcopy(switches)
     switches_reduce = copy.deepcopy(switches)
 
-    # eps_no_archs = [10, 10, 10]
-    eps_no_archs = [2, 2, 2]
+    eps_no_archs = [10, 10, 10]
+    # eps_no_archs = [2, 2, 2]
     for sp in range(len(num_to_keep)):
         # if sp < 1:
         #     continue
@@ -179,6 +180,7 @@ def main():
             logging.info('Epoch time: %ds', epoch_duration)
             # validation
             if epochs - epoch < 5:
+            # if 0:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
@@ -281,11 +283,13 @@ def main():
 def get_cur_model(model):
     sm_dim = -1
 
-    switches_normal = []
-    switches_reduce = []
-    for i in range(14):
-        switches_normal.append([True for j in range(len(PRIMITIVES))])
-        switches_reduce.append([True for j in range(len(PRIMITIVES))])
+    switches_normal = [[True for col in range(model.module.switch_on)] for row in range(len(model.module.switches_normal))]
+    switches_reduce = [[True for col in range(model.module.switch_on)] for row in range(len(model.module.switches_normal))]
+    # switches_normal = []
+    # switches_reduce = []
+    # for i in range(14):
+    #     switches_normal.append([True for j in range(len(PRIMITIVES))])
+    #     switches_reduce.append([True for j in range(len(PRIMITIVES))])
     # switches_normal_2 = copy.deepcopy(switches_normal)
     # switches_reduce_2 = copy.deepcopy(switches_reduce)
     arch_param = model.module.arch_parameters()
@@ -305,7 +309,7 @@ def get_cur_model(model):
         # normal_final[i] = max(normal_prob[i])
         # idx = np.argmax(normal_prob[i], axis = 0)
         # model.module.normal_log_prob[i] = torch.log(torch.from_numpy(np.array(normal_prob[i][idx])))
-        for j in range(8):
+        for j in range(model.module.switch_on):
             if j != idx:
                 switches_normal[i][j] = False
         # if switches_reduce_2[i][0] == True:
@@ -315,7 +319,7 @@ def get_cur_model(model):
         # reduce_final[i] = max(reduce_prob[i])
         # idx = np.argmax(reduce_prob[i], axis = 0)
         # model.module.reduce_log_prob[i] = torch.log(torch.from_numpy(np.array(reduce_prob[i][idx])))
-        for j in range(8):
+        for j in range(model.module.switch_on):
             if j != idx:
                 switches_reduce[i][j] = False
         # Generate Architecture, similar to DARTS
@@ -354,7 +358,8 @@ def get_cur_model(model):
 
 # baseline_flg = None
 baseline = 0
-baseline_decay_weight = 0.99
+# baseline_decay_weight = 0.99
+baseline_decay_weight = 0.95
 rl_batch_size = 10
 def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True):
     objs = utils.AvgrageMeter()
@@ -366,8 +371,8 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
         n = input.size(0)
         input = input.cuda()
         target = target.cuda(non_blocking=True)
-        # if step % 10 ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
-        if 1:  # 每10个batch ，进行一次RL ， 一次 采10次网络
+        if step % 10 ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
+        # if 1:  # 每10个batch ，进行一次RL ， 一次 采10次网络
             if train_arch:
                 # In the original implementation of DARTS, it is input_search, target_search = next(iter(valid_queue), which slows down
                 # the training when using PyTorch 0.4 and above.
@@ -407,12 +412,13 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                     reduce_grad_list = []
                     normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
                     reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
-                    reward_buffer.append(prec1)
+                    reward_buffer.append(prec1/100)
                 avg_reward = sum(reward_buffer) / rl_batch_size
                 if baseline == 0:
                     baseline = avg_reward
                 else:
-                    baseline += baseline_decay_weight * (avg_reward - baseline)
+                    # baseline += baseline_decay_weight * (avg_reward - baseline)
+                    baseline = baseline_decay_weight * baseline + (1-baseline_decay_weight) * avg_reward
 
                 # for idx in range(14):
                 model.module._arch_parameters[0].grad.data.zero_()
@@ -428,8 +434,8 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                 model.module.restore_super_net()
                 # print(model.module._arch_parameters[0])
                 # print(model.module._arch_parameters[1])
-        if not train_arch:
-        # if 0:
+        # if not train_arch:
+        if 1:
             optimizer.zero_grad()
             logits = model(input)
             loss = criterion(logits, target)

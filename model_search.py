@@ -201,8 +201,8 @@ class Network(nn.Module):
         return normal_sample, reduce_sample
 
     def set_sub_net(self, switch_normal, switch_reduce):
-        for i in range(14):
-            for j in range(8):
+        for i in range(len(switch_normal)):
+            for j in range(self.switch_on):
                 if switch_normal[i][j]:
                     self.sub_alphas_normal[i][j] = 1.0
                 else:
