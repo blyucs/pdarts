@@ -22,15 +22,17 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
-parser.add_argument('--batch_size', type=int, default=96, help='batch size')
+# parser.add_argument('--batch_size', type=int, default=96, help='batch size')
+parser.add_argument('--batch_size', type=int, default=192, help='batch size')
 # parser.add_argument('--batch_size', type=int, default=12, help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
+# parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
+parser.add_argument('--learning_rate', type=float, default=0.04, help='init learning rate')
 parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=50, help='report frequency')
 parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
-# parser.add_argument('--epochs', type=int, default=4, help='num of training epochs')
+# parser.add_argument('--epochs', type=int, default=5, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
@@ -42,7 +44,8 @@ parser.add_argument('--grad_clip', type=float, default=5, help='gradient clippin
 parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 # parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
+# parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -131,8 +134,9 @@ def main():
     switches_normal = copy.deepcopy(switches)
     switches_reduce = copy.deepcopy(switches)
 
-    eps_no_archs = [10, 10, 10]
-    # eps_no_archs = [2, 2, 2]
+    # eps_no_archs = [10, 10, 10]
+    eps_no_archs = [5, 5, 5]
+    # eps_no_archs = [1, 1, 1]
     for sp in range(len(num_to_keep)):
         # if sp < 1:
         #     continue
@@ -356,22 +360,18 @@ def get_cur_model(model):
     # return sub_model
     model.module.set_sub_net(switches_normal, switches_reduce)
 
-# baseline_flg = None
-baseline = 0
-# baseline_decay_weight = 0.99
-baseline_decay_weight = 0.95
-rl_batch_size = 10
+
 def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, lr, train_arch=True):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    global baseline
+    # global baseline
     for step, (input, target) in enumerate(train_queue):
         model.train()
         n = input.size(0)
         input = input.cuda()
         target = target.cuda(non_blocking=True)
-        if step % 10 ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
+        if step % model.module.rl_interval_steps ==0:  # 每10个batch ，进行一次RL ， 一次 采10次网络
         # if 1:  # 每10个batch ，进行一次RL ， 一次 采10次网络
             if train_arch:
                 # In the original implementation of DARTS, it is input_search, target_search = next(iter(valid_queue), which slows down
@@ -386,11 +386,9 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                 normal_grad_buffer = []
                 reduce_grad_buffer = []
                 reward_buffer = []
-                for batch_idx in range(rl_batch_size): # 多采集几个网络，测试
+                for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
                     # sample the submodel
                     get_cur_model(model)
-                    # cur_sub_model.cuda()
-                    # cur_sub_model.drop_path_prob = 0
                     # validat the sub_model
                     with torch.no_grad():
                         # logits, _ = cur_sub_model(input_search)
@@ -408,29 +406,27 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
                     # backward
                     loss_term.backward()
                     # take out gradient dict
-                    normal_grad_list = []
-                    reduce_grad_list = []
                     normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
                     reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
                     reward_buffer.append(prec1/100)
-                avg_reward = sum(reward_buffer) / rl_batch_size
-                if baseline == 0:
-                    baseline = avg_reward
+                avg_reward = sum(reward_buffer) / model.module.rl_batch_size
+                if model.module.baseline == 0:
+                    model.module.baseline = avg_reward
                 else:
-                    # baseline += baseline_decay_weight * (avg_reward - baseline)
-                    baseline = baseline_decay_weight * baseline + (1-baseline_decay_weight) * avg_reward
+                    # model.module.baseline += model.module.baseline_decay_weight * (avg_reward - model.module.baseline)
+                    model.module.baseline = model.module.baseline_decay_weight * model.module.baseline + \
+                                            (1-model.module.baseline_decay_weight) * avg_reward
 
-                # for idx in range(14):
                 model.module._arch_parameters[0].grad.data.zero_()
                 model.module._arch_parameters[1].grad.data.zero_()
-                for j in range(rl_batch_size):
-                    model.module._arch_parameters[0].grad.data += (reward_buffer[j] - baseline) * normal_grad_buffer[j]
-                    model.module._arch_parameters[1].grad.data += (reward_buffer[j] - baseline) * reduce_grad_buffer[j]
-                model.module._arch_parameters[0].grad.data /= rl_batch_size
-                model.module._arch_parameters[1].grad.data /= rl_batch_size
+                for j in range(model.module.rl_batch_size):
+                    model.module._arch_parameters[0].grad.data += (reward_buffer[j] - model.module.baseline) * normal_grad_buffer[j]
+                    model.module._arch_parameters[1].grad.data += (reward_buffer[j] - model.module.baseline) * reduce_grad_buffer[j]
+                model.module._arch_parameters[0].grad.data /= model.module.rl_batch_size
+                model.module._arch_parameters[1].grad.data /= model.module.rl_batch_size
                 # apply gradients
                 optimizer_a.step()
-                logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %d', step, avg_reward, baseline)
+                logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
                 model.module.restore_super_net()
                 # print(model.module._arch_parameters[0])
                 # print(model.module._arch_parameters[1])

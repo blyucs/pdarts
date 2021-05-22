@@ -123,7 +123,11 @@ class Network(nn.Module):
         self.classifier = nn.Linear(C_prev, num_classes)
         self.forward_type = True
         self._initialize_alphas()
-
+        self.baseline = 0
+        # self.baseline_decay_weight = 0.99
+        self.baseline_decay_weight = 0.95
+        self.rl_batch_size = 10
+        self.rl_interval_steps = 2
     def forward(self, input):
         # print("fuck %d" % self.forward_type)
         s0 = s1 = self.stem(input)
