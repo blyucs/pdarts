@@ -172,11 +172,18 @@ class Network(nn.Module):
     def _initialize_alphas(self):
         k = sum(1 for i in range(self._steps) for n in range(2+i))
         num_ops = self.switch_on
-        self.alphas_normal = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
-        self.alphas_reduce = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
+        # self.alphas_normal = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
+        # self.alphas_reduce = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
+        self.alphas_normal = nn.Parameter(torch.Tensor(k, num_ops))
+        self.alphas_reduce = nn.Parameter(torch.Tensor(k, num_ops))
+        for i in range(k):
+            self.alphas_normal.data[i].normal_(0, 1e-3)
+            self.alphas_reduce.data[i].normal_(0, 1e-3)
 
-        self.sub_alphas_normal =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
-        self.sub_alphas_reduce =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
+        # self.sub_alphas_normal =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
+        # self.sub_alphas_reduce =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
+        self.sub_alphas_normal =torch.FloatTensor(k, num_ops)
+        self.sub_alphas_reduce =torch.FloatTensor(k, num_ops)
 
         self._arch_parameters = [
             self.alphas_normal,
