@@ -30,7 +30,7 @@ parser.add_argument('--learning_rate', type=float, default=0.04, help='init lear
 parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
-parser.add_argument('--report_freq', type=float, default=50, help='report frequency')
+parser.add_argument('--report_freq', type=float, default=1, help='report frequency')
 parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=5, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
@@ -41,11 +41,11 @@ parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path
 parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experiment path')
 parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
-parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
+parser.add_argument('--train_portion', type=float, default=0.95, help='portion of training data')
 # parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-3, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -111,7 +111,8 @@ def main():
     else:
         train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
 
-    num_train = len(train_data)
+    # num_train = len(train_data)*0.1
+    num_train = int(len(train_data)*0.2)
     indices = list(range(num_train))
     split = int(np.floor(args.train_portion * num_train))
 
@@ -137,6 +138,7 @@ def main():
     # eps_no_archs = [10, 10, 10]
     # eps_no_archs = [5, 5, 5]
     eps_no_archs = [1, 1, 1]
+    # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
         # if sp < 1:
         #     continue
@@ -174,20 +176,20 @@ def main():
             # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
-                train_acc, train_obj = train(train_queue, model, network_params, criterion, optimizer)
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False)
             else:
                 model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
                 model.module.update_p()
-                train_acc, train_obj = train(train_queue, model, network_params, criterion, optimizer )
+                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = True)
                 # if epoch % 3 == 0:
-                if 1:
-                    train_arch(valid_queue,model,optimizer_a)
+                # if 1:
+                #     train_arch(valid_queue,model,optimizer_a)
             logging.info('Train_acc %f', train_acc)
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
             # validation
-            if epochs - epoch < 5:
-            # if 0:
+            # if epochs - epoch < 5:
+            if 1:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
@@ -363,74 +365,81 @@ def get_cur_model(model):
     # return sub_model
     model.module.set_sub_net(switches_normal, switches_reduce)
 
-def train_arch(valid_queue, model, optimizer_a):
-    for step in range(100):
-        try:
-            input_search, target_search = next(valid_queue_iter)
-        except:
-            valid_queue_iter = iter(valid_queue)
-            input_search, target_search = next(valid_queue_iter)
-        input_search = input_search.cuda()
-        target_search = target_search.cuda(non_blocking=True)
-        normal_grad_buffer = []
-        reduce_grad_buffer = []
-        reward_buffer = []
-        for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
-            # sample the submodel
-            get_cur_model(model)
-            # validat the sub_model
-            with torch.no_grad():
-                # logits, _ = cur_sub_model(input_search)
-                logits= model(input_search)
-                prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
-            if model.module._arch_parameters[0].grad is not None:
-                model.module._arch_parameters[0].grad.data.zero_()
-            if model.module._arch_parameters[1].grad is not None:
-                model.module._arch_parameters[1].grad.data.zero_()
-            obj_term = 0
-            for i in range(14):
-                obj_term = obj_term + model.module.normal_log_prob[i]
-                obj_term = obj_term + model.module.reduce_log_prob[i]
-            loss_term = -obj_term
-            # backward
-            loss_term.backward()
-            # take out gradient dict
-            normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
-            reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
-            reward_buffer.append(prec1/100)
-        avg_reward = sum(reward_buffer) / model.module.rl_batch_size
-        if model.module.baseline == 0:
-            model.module.baseline = avg_reward
-        else:
-            # model.module.baseline += model.module.baseline_decay_weight * (avg_reward - model.module.baseline)
-            model.module.baseline = model.module.baseline_decay_weight * model.module.baseline + \
-                                    (1-model.module.baseline_decay_weight) * avg_reward
+def train_arch(step, valid_queue, model, optimizer_a):
+    # for step in range(100):
+    try:
+        input_search, target_search = next(valid_queue_iter)
+    except:
+        valid_queue_iter = iter(valid_queue)
+        input_search, target_search = next(valid_queue_iter)
+    input_search = input_search.cuda()
+    target_search = target_search.cuda(non_blocking=True)
+    normal_grad_buffer = []
+    reduce_grad_buffer = []
+    reward_buffer = []
+    for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
+        # sample the submodel
+        get_cur_model(model)
+        # validat the sub_model
+        with torch.no_grad():
+            # logits, _ = cur_sub_model(input_search)
+            logits= model(input_search)
+            prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
+        if model.module._arch_parameters[0].grad is not None:
+            model.module._arch_parameters[0].grad.data.zero_()
+        if model.module._arch_parameters[1].grad is not None:
+            model.module._arch_parameters[1].grad.data.zero_()
+        obj_term = 0
+        for i in range(14):
+            obj_term = obj_term + model.module.normal_log_prob[i]
+            obj_term = obj_term + model.module.reduce_log_prob[i]
+        loss_term = -obj_term
+        # backward
+        loss_term.backward()
+        # take out gradient dict
+        normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
+        reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
+        reward_buffer.append(prec1/100)
+    avg_reward = sum(reward_buffer) / model.module.rl_batch_size
+    if model.module.baseline == 0:
+        model.module.baseline = avg_reward
+    else:
+        model.module.baseline += model.module.baseline_decay_weight * (avg_reward - model.module.baseline)
+        # model.module.baseline = model.module.baseline_decay_weight * model.module.baseline + \
+        #                         (1-model.module.baseline_decay_weight) * avg_reward
 
-        model.module._arch_parameters[0].grad.data.zero_()
-        model.module._arch_parameters[1].grad.data.zero_()
-        for j in range(model.module.rl_batch_size):
-            model.module._arch_parameters[0].grad.data += (reward_buffer[j] - model.module.baseline) * normal_grad_buffer[j]
-            model.module._arch_parameters[1].grad.data += (reward_buffer[j] - model.module.baseline) * reduce_grad_buffer[j]
-        model.module._arch_parameters[0].grad.data /= model.module.rl_batch_size
-        model.module._arch_parameters[1].grad.data /= model.module.rl_batch_size
-        if step % 10 == 0:
-            logging.info(model.module._arch_parameters[0].grad.data)
-            logging.info(model.module._arch_parameters[0])
-        # apply gradients
-        optimizer_a.step()
-        if step % 10 == 0:
-            logging.info(model.module._arch_parameters[0])
-        logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
-        model.module.restore_super_net()
-        # print(model.module._arch_parameters[0])
-        # print(model.module._arch_parameters[1])
+    model.module._arch_parameters[0].grad.data.zero_()
+    model.module._arch_parameters[1].grad.data.zero_()
+    for j in range(model.module.rl_batch_size):
+        model.module._arch_parameters[0].grad.data += (reward_buffer[j] - model.module.baseline) * normal_grad_buffer[j]
+        model.module._arch_parameters[1].grad.data += (reward_buffer[j] - model.module.baseline) * reduce_grad_buffer[j]
+    model.module._arch_parameters[0].grad.data /= model.module.rl_batch_size
+    model.module._arch_parameters[1].grad.data /= model.module.rl_batch_size
+    # if step % 50 == 0:
+    #     logging.info(model.module._arch_parameters[0].grad.data)
+    #     logging.info(model.module._arch_parameters[0])
+    # apply gradients
+    optimizer_a.step()
+    # if step % 50 == 0:
+    #     logging.info(model.module._arch_parameters[0])
+    logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
+    logging.info('REINFORCE REWARD %.3f', torch.Tensor(reward_buffer).numpy().tolist())
+    model.module.restore_super_net()
+    # print(model.module._arch_parameters[0])
+    # print(model.module._arch_parameters[1])
 
-def train(train_queue, model, network_params, criterion, optimizer):
+def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
     # global baseline
     for step, (input, target) in enumerate(train_queue):
+        if training_arch:
+            if step % model.module.rl_interval_steps == 0:
+                model.train()
+                train_arch(step, valid_queue, model, optimizer_a)
+
+        # infer(valid_queue,model,criterion)
         model.train()
         n = input.size(0)
         input = input.cuda()
@@ -451,8 +460,8 @@ def train(train_queue, model, network_params, criterion, optimizer):
 
         if step % args.report_freq == 0:
             logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, objs.avg, top1.avg, top5.avg)
-            logging.info(model.module._arch_parameters[0])
-
+            # logging.info(model.module._arch_parameters[0])
+        # infer(valid_queue,model,criterion)
     return top1.avg, objs.avg
 
 

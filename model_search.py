@@ -124,10 +124,10 @@ class Network(nn.Module):
         self.forward_type = True
         self._initialize_alphas()
         self.baseline = 0
-        # self.baseline_decay_weight = 0.99
-        self.baseline_decay_weight = 0.95
-        self.rl_batch_size = 10
-        self.rl_interval_steps = 2
+        self.baseline_decay_weight = 0.99
+        # self.baseline_decay_weight = 0.95
+        self.rl_batch_size = 20
+        self.rl_interval_steps = 20
     def forward(self, input):
         # print("fuck %d" % self.forward_type)
         s0 = s1 = self.stem(input)
@@ -203,8 +203,17 @@ class Network(nn.Module):
 
     def set_log_prob(self):
         normal_probs, reduce_probs = self.probs_over_ops
-        normal_sample = torch.multinomial(normal_probs, 1)
-        reduce_sample = torch.multinomial(reduce_probs, 1)
+        # normal_sample = torch.multinomial(normal_probs, 1)
+        # reduce_sample = torch.multinomial(reduce_probs, 1)
+        normal_sample = torch.LongTensor(len(normal_probs)).cuda()
+        reduce_sample = torch.LongTensor(len(normal_probs)).cuda()
+        for i in range(len(normal_probs)):
+            normal_sample[i] = torch.from_numpy(np.random.choice([_i for _i in range(self.switch_on)], 1))[0]
+            reduce_sample[i] = torch.from_numpy(np.random.choice([_i for _i in range(self.switch_on)], 1))[0]
+        # normal_sample = torch.utils.data.sampler.SubsetRandomSampler(normal_probs)[0]
+        # reduce_sample = torch.utils.data.sampler.SubsetRandomSampler(reduce_probs)[0]
+        normal_sample = normal_sample.unsqueeze(1)
+        reduce_sample = reduce_sample.unsqueeze(1)
         self.normal_log_prob = torch.log(torch.gather(normal_probs,1,normal_sample))
         self.reduce_log_prob = torch.log(torch.gather(reduce_probs,1,reduce_sample))
         # self.log_prob = torch.log(probs[sample])
