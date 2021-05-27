@@ -5,6 +5,8 @@ OPS = {
   'none' : lambda C, stride, affine: Zero(stride),
   'avg_pool_3x3' : lambda C, stride, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
   'max_pool_3x3' : lambda C, stride, affine: nn.MaxPool2d(3, stride=stride, padding=1),
+  'max_pool_5x5' : lambda C, stride, affine: nn.MaxPool2d(5, stride=stride, padding=2),
+  'max_pool_7x7' : lambda C, stride, affine: nn.MaxPool2d(7, stride=stride, padding=3),
   'skip_connect' : lambda C, stride, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
   'sep_conv_3x3' : lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
   'sep_conv_5x5' : lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
@@ -17,6 +19,14 @@ OPS = {
     nn.Conv2d(C, C, (7,1), stride=(stride, 1), padding=(3, 0), bias=False),
     nn.BatchNorm2d(C, affine=affine)
     ),
+  "conv_3x1_1x3" : lambda C, stride, affine: nn.Sequential(
+    nn.ReLU(inplace=False),
+    nn.Conv2d(C, C, (1,3), stride=(1, stride), padding=(0, 1), bias=False),
+    nn.Conv2d(C, C, (3,1), stride=(stride, 1), padding=(1, 0), bias=False),
+    nn.BatchNorm2d(C, affine=affine)
+  ),
+  "conv 1x1" : lambda C, stride, affine: ReLUConvBN(C, C, kernel_size=1, stride=stride, padding=0, affine=affine),
+  "conv 3x3" : lambda C, stride, affine: ReLUConvBN(C, C, kernel_size=3, stride=stride, padding=1, affine=affine),
 }
 
 class ReLUConvBN(nn.Module):

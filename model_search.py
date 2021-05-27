@@ -4,16 +4,20 @@ import torch.nn as nn
 import torch.nn.functional as F
 from operations import *
 from torch.autograd import Variable
-from genotypes import PRIMITIVES
+from genotypes import PRIMITIVES_NORMAL,PRIMITIVES_REDUCE
 from genotypes import Genotype
 
 
 class MixedOp(nn.Module):
 
-    def __init__(self, C, stride, switch, p):
+    def __init__(self, C, stride, reduction, switch, p):
         super(MixedOp, self).__init__()
         self.m_ops = nn.ModuleList()
         self.p = p
+        if reduction:
+            PRIMITIVES = PRIMITIVES_REDUCE
+        else:
+            PRIMITIVES = PRIMITIVES_NORMAL
         for i in range(len(switch)):
             if switch[i]:
                 primitive = PRIMITIVES[i]
@@ -53,7 +57,7 @@ class Cell(nn.Module):
         for i in range(self._steps):
             for j in range(2+i):
                 stride = 2 if reduction and j < 2 else 1
-                op = MixedOp(C, stride, switch=switches[switch_count], p=self.p)
+                op = MixedOp(C, stride, reduction, switch=switches[switch_count], p=self.p)
                 self.cell_ops.append(op)
                 switch_count = switch_count + 1
     
@@ -87,15 +91,26 @@ class Network(nn.Module):
         self._multiplier = multiplier
         self.p = p
         self.switches_normal = switches_normal
-        switch_ons = []
+        self.switches_reduce = switches_reduce
+        switch_normal_ons = []
+        switch_reduce_ons = []
         for i in range(len(switches_normal)):
             ons = 0
             for j in range(len(switches_normal[i])):
                 if switches_normal[i][j]:
                     ons = ons + 1
-            switch_ons.append(ons)
+            switch_normal_ons.append(ons)
             ons = 0
-        self.switch_on = switch_ons[0]
+        self.switch_normal_on = switch_normal_ons[0]
+
+        for i in range(len(switches_reduce)):
+            ons = 0
+            for j in range(len(switches_reduce[i])):
+                if switches_reduce[i][j]:
+                    ons = ons + 1
+            switch_reduce_ons.append(ons)
+            ons = 0
+        self.switch_reduce_on = switch_reduce_ons[0]
 
         C_curr = stem_multiplier*C
         self.stem = nn.Sequential(
@@ -127,7 +142,7 @@ class Network(nn.Module):
         # self.baseline_decay_weight = 0.99
         self.baseline_decay_weight = 0.95
         self.rl_batch_size = 10
-        self.rl_interval_steps = 2
+        self.rl_interval_steps = 1
     def forward(self, input):
         # print("fuck %d" % self.forward_type)
         s0 = s1 = self.stem(input)
@@ -171,17 +186,17 @@ class Network(nn.Module):
 
     def _initialize_alphas(self):
         k = sum(1 for i in range(self._steps) for n in range(2+i))
-        num_ops = self.switch_on
-        self.alphas_normal = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
-        self.alphas_reduce = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, num_ops)))
+        # num_ops = self.switch_on
+        self.alphas_normal = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, self.switch_normal_on)))
+        self.alphas_reduce = nn.Parameter(torch.FloatTensor(1e-3*np.random.randn(k, self.switch_reduce_on)))
         # self.alphas_normal = nn.Parameter(torch.Tensor(k, num_ops))
         # self.alphas_reduce = nn.Parameter(torch.Tensor(k, num_ops))
         # for i in range(k):
         #     self.alphas_normal.data[i].normal_(0, 1e-3)
         #     self.alphas_reduce.data[i].normal_(0, 1e-3)
 
-        self.sub_alphas_normal =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
-        self.sub_alphas_reduce =torch.FloatTensor(1e-3*np.random.randn(k, num_ops))
+        self.sub_alphas_normal =torch.FloatTensor(1e-3*np.random.randn(k, self.switch_normal_on))
+        self.sub_alphas_reduce =torch.FloatTensor(1e-3*np.random.randn(k, self.switch_reduce_on))
         # self.sub_alphas_normal =torch.FloatTensor(k, num_ops)
         # self.sub_alphas_reduce =torch.FloatTensor(k, num_ops)
 
@@ -222,12 +237,14 @@ class Network(nn.Module):
 
     def set_sub_net(self, switch_normal, switch_reduce):
         for i in range(len(switch_normal)):
-            for j in range(self.switch_on):
+            for j in range(self.switch_normal_on):
                 if switch_normal[i][j]:
                     self.sub_alphas_normal[i][j] = 1.0
                 else:
                     self.sub_alphas_normal[i][j] = 0
 
+        for i in range(len(switch_reduce)):
+            for j in range(self.switch_reduce_on):
                 if switch_reduce[i][j]:
                     self.sub_alphas_reduce[i][j] = 1.0
                 else:

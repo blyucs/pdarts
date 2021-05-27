@@ -2,17 +2,38 @@ from collections import namedtuple
 
 Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
 
-PRIMITIVES = [
-    'none',
+# PRIMITIVES = [
+#     'none',
     # 'max_pool_3x3',
     # 'avg_pool_3x3',
-    'skip_connect',
-    'sep_conv_3x3',
-    'sep_conv_5x5',
-    'dil_conv_3x3',
-    'dil_conv_5x5',
-    'max_pool_3x3',
-    'avg_pool_3x3',
+    # 'skip_connect',
+    # 'sep_conv_3x3',
+    # 'sep_conv_5x5',
+    # 'dil_conv_3x3',
+    # 'dil_conv_5x5',
+    # 'max_pool_3x3',
+    # 'avg_pool_3x3',
+# ]
+
+PRIMITIVES_NORMAL = [
+  'none',
+  'skip_connect',
+  'sep_conv_3x3',
+  'sep_conv_5x5',
+  'sep_conv_7x7',
+  'dil_conv_3x3',
+  'dil_conv_5x5',
+  'conv 1x1',
+  'conv 3x3',
+  'conv_3x1_1x3'
+]
+PRIMITIVES_REDUCE = [
+  'none',
+  'skip_connect',
+  'max_pool_3x3',
+  'avg_pool_3x3',
+  'max_pool_5x5',
+  'max_pool_7x7',
 ]
 
 NASNet = Genotype(
@@ -79,4 +100,4 @@ DARTS_V2 = Genotype(normal=[('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv
 PDARTS = Genotype(normal=[('skip_connect', 0), ('dil_conv_3x3', 1), ('skip_connect', 0),('sep_conv_3x3', 1), ('sep_conv_3x3', 1), ('sep_conv_3x3', 3), ('sep_conv_3x3',0), ('dil_conv_5x5', 4)], normal_concat=range(2, 6), reduce=[('avg_pool_3x3', 0), ('sep_conv_5x5', 1), ('sep_conv_3x3', 0), ('dil_conv_5x5', 2), ('max_pool_3x3', 0), ('dil_conv_3x3', 1), ('dil_conv_3x3', 1), ('dil_conv_5x5', 3)], reduce_concat=range(2, 6))
 
 SEARCH_TEST_20210515 = Genotype(normal=[('skip_connect', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 2), ('dil_conv_5x5', 3)], normal_concat=range(2, 6), reduce=[('dil_conv_3x3', 0), ('skip_connect', 1), ('skip_connect', 0), ('dil_conv_5x5', 2), ('avg_pool_3x3', 1), ('dil_conv_5x5', 3), ('dil_conv_5x5', 0), ('sep_conv_5x5', 2)], reduce_concat=range(2, 6))
-
+SEARCH_TEST_20210525_1948 = Genotype(normal=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('sep_conv_3x3', 1), ('avg_pool_3x3', 2), ('avg_pool_3x3', 3), ('avg_pool_3x3', 2), ('max_pool_3x3', 4)], normal_concat=range(2, 6), reduce=[('avg_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 0), ('sep_conv_5x5', 1), ('avg_pool_3x3', 1), ('skip_connect', 2)], reduce_concat=range(2, 6))
