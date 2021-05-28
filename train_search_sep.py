@@ -15,7 +15,7 @@ import torch.backends.cudnn as cudnn
 import copy
 from model_search import Network
 from model import NetworkCIFAR
-from genotypes import PRIMITIVES
+from genotypes import PRIMITIVES_NORMAL,PRIMITIVES_REDUCE
 from genotypes import Genotype
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 # os.environ["CUDA_VISIBLE_DEVICES"]="1"   # batchsize
@@ -129,11 +129,14 @@ def main():
     # build Network
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
-    switches = []
+    normal = []
+    reduce = []
     for i in range(14):
-        switches.append([True for j in range(len(PRIMITIVES))])
-    switches_normal = copy.deepcopy(switches)
-    switches_reduce = copy.deepcopy(switches)
+        normal.append([True for j in range(len(PRIMITIVES_NORMAL))])
+    for i in range(14):
+        reduce.append([True for j in range(len(PRIMITIVES_REDUCE))])
+    switches_normal = copy.deepcopy(normal)
+    switches_reduce = copy.deepcopy(reduce)
 
     # eps_no_archs = [10, 10, 10]
     # eps_no_archs = [5, 5, 5]
@@ -201,7 +204,7 @@ def main():
         normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()        
         for i in range(14):
             idxs = []
-            for j in range(len(PRIMITIVES)):
+            for j in range(len(PRIMITIVES_NORMAL)):
                 if switches_normal[i][j]:
                     idxs.append(j)
             if sp == len(num_to_keep) - 1:
@@ -214,7 +217,7 @@ def main():
         reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
         for i in range(14):
             idxs = []
-            for j in range(len(PRIMITIVES)):
+            for j in range(len(PRIMITIVES_REDUCE)):
                 if switches_reduce[i][j]:
                     idxs.append(j)
             if sp == len(num_to_keep) - 1:
@@ -224,9 +227,9 @@ def main():
             for idx in drop:
                 switches_reduce[i][idxs[idx]] = False
         logging.info('switches_normal = %s', switches_normal)
-        logging_switches(switches_normal)
+        logging_switches(switches_normal, reduction = False)
         logging.info('switches_reduce = %s', switches_reduce)
-        logging_switches(switches_reduce)
+        logging_switches(switches_reduce, reduction = True)
         
         if sp == len(num_to_keep) - 1:
             arch_param = model.module.arch_parameters()
@@ -262,10 +265,10 @@ def main():
             # set switches according the ranking of arch parameters
             for i in range(14):
                 if not i in keep_normal:
-                    for j in range(len(PRIMITIVES)):
+                    for j in range(len(PRIMITIVES_NORMAL)):
                         switches_normal[i][j] = False
                 if not i in keep_reduce:
-                    for j in range(len(PRIMITIVES)):
+                    for j in range(len(PRIMITIVES_REDUCE)):
                         switches_reduce[i][j] = False
             # translate switches into genotype
             genotype = parse_network(switches_normal, switches_reduce)
@@ -280,7 +283,7 @@ def main():
                     continue
                 while num_sk > max_sk:
                     normal_prob = delete_min_sk_prob(switches_normal, switches_normal_2, normal_prob)
-                    switches_normal = keep_1_on(switches_normal_2, normal_prob)
+                    switches_normal = keep_1_on(switches_normal_2, normal_prob, reduction = False)
                     switches_normal = keep_2_branches(switches_normal, normal_prob)
                     num_sk = check_sk_number(switches_normal)
                 logging.info('Number of skip-connect: %d', max_sk)
@@ -486,7 +489,11 @@ def infer(valid_queue, model, criterion):
 
 def parse_network(switches_normal, switches_reduce):
 
-    def _parse_switches(switches):
+    def _parse_switches(switches, reduction):
+        if reduction:
+            PRIMITIVES = PRIMITIVES_REDUCE
+        else:
+            PRIMITIVES = PRIMITIVES_NORMAL
         n = 2
         start = 0
         gene = []
@@ -500,8 +507,8 @@ def parse_network(switches_normal, switches_reduce):
             start = end
             n = n + 1
         return gene
-    gene_normal = _parse_switches(switches_normal)
-    gene_reduce = _parse_switches(switches_reduce)
+    gene_normal = _parse_switches(switches_normal, reduction = False)
+    gene_reduce = _parse_switches(switches_reduce, reduction = True)
     
     concat = range(2, 6)
     
@@ -540,7 +547,11 @@ def get_min_k_no_zero(w_in, idxs, k):
         index.append(idx)
     return index
         
-def logging_switches(switches):
+def logging_switches(switches, reduction = False):
+    if reduction:
+        PRIMITIVES = PRIMITIVES_REDUCE
+    else:
+        PRIMITIVES = PRIMITIVES_NORMAL
     for i in range(len(switches)):
         ops = []
         for j in range(len(switches[i])):
@@ -578,8 +589,12 @@ def delete_min_sk_prob(switches_in, switches_bk, probs_in):
     
     return probs_out
 
-def keep_1_on(switches_in, probs):
+def keep_1_on(switches_in, probs, reduction = False):
     switches = copy.deepcopy(switches_in)
+    if reduction:
+        PRIMITIVES = PRIMITIVES_REDUCE
+    else:
+        PRIMITIVES = PRIMITIVES_NORMAL
     for i in range(len(switches)):
         idxs = []
         for j in range(len(PRIMITIVES)):
