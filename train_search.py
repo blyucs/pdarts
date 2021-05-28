@@ -32,8 +32,8 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-# parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
-parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=40, help='num of training epochs')
+# parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
@@ -141,8 +141,8 @@ def main():
     switches_normal = copy.deepcopy(normal)
     switches_reduce = copy.deepcopy(reduce)
 
-    eps_no_archs = [10, 10, 10]
-    # eps_no_archs = [5, 5, 5]
+    # eps_no_archs = [10, 10, 10]
+    eps_no_archs = [5, 5, 5]
     # eps_no_archs = [1, 1, 1]
     # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
@@ -195,8 +195,8 @@ def main():
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
             # validation
-            # if epochs - epoch < 5:
-            if 1:
+            if epochs - epoch < 5:
+            # if 1:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
