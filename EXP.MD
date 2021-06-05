@@ -36,6 +36,9 @@ search-sep-20210604-165743 (pdarts_modify)    为解决“上一个实验”问�
 
 search-try-20210604-192647     pdarts 上再跑一次随机采样   ，lr =1e-2 , 注意打印softmax 权重， 进行一次完整的搜索。       ------   **被错误停掉了 ，** REINFORCE 精度没有的到持续强化， 但应该是合理的，因为策略是random sample。
 
- 增加tensorboard scalar   监控每一个操作中，最优index 的变化情况， 划分stage。    ---- 调试OK 
+增加tensorboard scalar   监控每一个操作中，最优index 的变化情况， 划分stage。    **---- 调试OK** 
 
-增加10次 *  20 （间隔） =  **200** 采样中，最大的reward 对应的index  ， 用来看下，operation 是否收敛到了最好的采样， 确认强化的效果（因为是随机采样策略， sample avg reward 已经看不出强化效果了。）  -- 
+增加tensorboard 监控  10次 *  20 （间隔） =  **200** 采样中，最大的reward 对应的index  ， 用来看下，operation 是否收敛到了最好的采样， 确认强化的效果（因为是随机采样策略， sample avg reward 已经看不出强化效果了。）  **-- 调试OK** 
+
+
+

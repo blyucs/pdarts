@@ -101,10 +101,16 @@ reduce_num_to_drop = [2, 2, 1]
 # handler = SummaryWriter(log_dir=args.save)
 normal_writer = []
 reduce_writer = []
+best_normal_writer = []
+best_reduce_writer = []
+tb_index = [0, 0, 0]
+best_reward = 0
 for i in range(14):
     # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     normal_writer.append(SummaryWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     reduce_writer.append(SummaryWriter(logdir='{}/tb/reduce_{}'.format(args.save, i)))
+    best_normal_writer.append(SummaryWriter(logdir='{}/tb/best_normal_{}'.format(args.save, i)))
+    best_reduce_writer.append(SummaryWriter(logdir='{}/tb/best_reduce_{}'.format(args.save, i)))
 def main():
     if not torch.cuda.is_available():
         logging.info('No GPU device available')
@@ -184,6 +190,7 @@ def main():
         epochs = args.epochs
         eps_no_arch = eps_no_archs[sp]
         scale_factor = 0.2
+        best_reward = 0
         # cur_sub_model = get_cur_model(model,switches_normal,switches_reduce,num_to_keep,num_to_drop,sp)
         for epoch in range(epochs):
             scheduler.step()
@@ -384,12 +391,18 @@ def get_cur_model(model):
     # sub_model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
     # return sub_model
     model.module.set_sub_net(switches_normal, switches_reduce)
+    return normal_sel_index, reduce_sel_index
 tb_index = [0, 0, 0]
 R_L1 = 40
 R_L2 = 2
 R_LI = 0.1
 
+best_normal_indices = []
+best_reduce_indices = []
 def train_arch(stage, step, valid_queue, model, optimizer_a):
+    global best_reward
+    global best_normal_indices
+    global best_reduce_indices
     # for step in range(100):
     try:
         input_search, target_search = next(valid_queue_iter)
@@ -427,7 +440,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
 
     for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
         # sample the submodel
-        get_cur_model(model)
+        normal_indices, reduce_indices = get_cur_model(model)
         # attack = FastGradientMethod(estimator=model, eps=0.2)
         # x_test_adv = attack.generate(x=x_test)
         # res = clever_u(classifier,valid_queue.dataset.data[-1].transpose(2,0,1) , 2, 2, R_LI, norm=np.inf, pool_factor=3)
@@ -453,7 +466,14 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
         reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
         reward_buffer.append(prec1/100)
-        # reward_buffer.append(prec1)
+        # recode best_reward index
+        if prec1 > best_reward:
+            best_reward = prec1
+            best_normal_indices = normal_indices
+            best_reduce_indices = reduce_indices
+        # else:
+        #     best_normal_indices = []
+        #     best_reduce_indices = []
     avg_reward = sum(reward_buffer) / model.module.rl_batch_size
     if model.module.baseline == 0:
         model.module.baseline = avg_reward
@@ -482,8 +502,11 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         logging.info(model.module.reduce_probs)
         for i in range(14):
             normal_writer[i].add_scalar('normal_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
+            best_normal_writer[i].add_scalar('best_normal_index_{}'.format(stage), best_normal_indices[i].cpu().numpy(), tb_index[stage])
         for i in range(14):
             reduce_writer[i].add_scalar('reduce_arc_{}'.format(stage), np.argmax(model.module.reduce_probs.detach().cpu()[i].numpy()), tb_index[stage])
+            best_reduce_writer[i].add_scalar('best_reduce_index_{}'.format(stage), best_reduce_indices[i].cpu().numpy(), tb_index[stage])
+        best_reward = 0
         tb_index[stage]+=1
     model.module.restore_super_net()
 
