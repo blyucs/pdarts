@@ -17,6 +17,9 @@ from model_search import Network
 from model import NetworkCIFAR
 from genotypes import PRIMITIVES_NORMAL,PRIMITIVES_REDUCE
 from genotypes import Genotype
+from art.metrics import clever_u,clever_t,clever
+from art.attacks.evasion import FastGradientMethod, ProjectedGradientDescent
+from art.estimators.classification import PyTorchClassifier
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 # os.environ["CUDA_VISIBLE_DEVICES"]="1"   # batchsize
 
@@ -32,7 +35,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=40, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -46,7 +49,7 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 # parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-3, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -128,7 +131,8 @@ def main():
         train_data, batch_size=args.batch_size,
         sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
         pin_memory=True, num_workers=args.workers)
-    
+
+
     # build Network
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
@@ -373,6 +377,10 @@ def get_cur_model(model):
     # return sub_model
     model.module.set_sub_net(switches_normal, switches_reduce)
 
+R_L1 = 40
+R_L2 = 2
+R_LI = 0.1
+
 def train_arch(step, valid_queue, model, optimizer_a):
     # for step in range(100):
     try:
@@ -385,14 +393,43 @@ def train_arch(step, valid_queue, model, optimizer_a):
     normal_grad_buffer = []
     reduce_grad_buffer = []
     reward_buffer = []
+
+    # cifar_mu = np.ones((3, 32, 32))
+    # cifar_mu[0, :, :] = 0.4914
+    # cifar_mu[1, :, :] = 0.4822
+    # cifar_mu[2, :, :] = 0.4465
+
+# (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+
+    # cifar_std = np.ones((3, 32, 32))
+    # cifar_std[0, :, :] = 0.2471
+    # cifar_std[1, :, :] = 0.2435
+    # cifar_std[2, :, :] = 0.2616
+    # criterion = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    # classifier = PyTorchClassifier(
+    #     model=model,
+    #     clip_values=(0.0, 1.0),
+    #     preprocessing=(cifar_mu, cifar_std),
+    #     loss=criterion,
+    #     optimizer=optimizer,
+    #     input_shape=(3, 32, 32),
+    #     nb_classes=10,
+    # )
+
     for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
         # sample the submodel
         get_cur_model(model)
+        # attack = FastGradientMethod(estimator=model, eps=0.2)
+        # x_test_adv = attack.generate(x=x_test)
+        # res = clever_u(classifier,valid_queue.dataset.data[-1].transpose(2,0,1) , 2, 2, R_LI, norm=np.inf, pool_factor=3)
+        # print(res)
         # validat the sub_model
         with torch.no_grad():
             # logits, _ = cur_sub_model(input_search)
             logits= model(input_search)
             prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
+            # prec1 = np.random.rand()
         if model.module._arch_parameters[0].grad is not None:
             model.module._arch_parameters[0].grad.data.zero_()
         if model.module._arch_parameters[1].grad is not None:
@@ -408,6 +445,7 @@ def train_arch(step, valid_queue, model, optimizer_a):
         normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
         reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
         reward_buffer.append(prec1/100)
+        # reward_buffer.append(prec1)
     avg_reward = sum(reward_buffer) / model.module.rl_batch_size
     if model.module.baseline == 0:
         model.module.baseline = avg_reward
@@ -432,9 +470,9 @@ def train_arch(step, valid_queue, model, optimizer_a):
         #     logging.info(model.module._arch_parameters[0])
         logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
         logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
+        logging.info(model.module.normal_probs)
+        logging.info(model.module.reduce_probs)
     model.module.restore_super_net()
-    # print(model.module._arch_parameters[0])
-    # print(model.module._arch_parameters[1])
 
 def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False):
     objs = utils.AvgrageMeter()
