@@ -20,6 +20,8 @@ from genotypes import Genotype
 from art.metrics import clever_u,clever_t,clever
 from art.attacks.evasion import FastGradientMethod, ProjectedGradientDescent
 from art.estimators.classification import PyTorchClassifier
+from tensorboardX import SummaryWriter
+import tensorflow as tf
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 # os.environ["CUDA_VISIBLE_DEVICES"]="1"   # batchsize
 
@@ -96,7 +98,13 @@ num_to_keep = [5, 3, 1]
 # num_to_drop = [3, 2, 2]
 normal_num_to_drop = [4, 3, 2]
 reduce_num_to_drop = [2, 2, 1]
-
+# handler = SummaryWriter(log_dir=args.save)
+normal_writer = []
+reduce_writer = []
+for i in range(14):
+    # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
+    normal_writer.append(SummaryWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
+    reduce_writer.append(SummaryWriter(logdir='{}/tb/reduce_{}'.format(args.save, i)))
 def main():
     if not torch.cuda.is_available():
         logging.info('No GPU device available')
@@ -187,11 +195,11 @@ def main():
             # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
-                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False)
+                train_acc, train_obj = train(sp,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False)
             else:
                 model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
                 model.module.update_p()
-                train_acc, train_obj = train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = True)
+                train_acc, train_obj = train(sp,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = True)
                 # if epoch % 3 == 0:
                 # if 1:
                 #     train_arch(valid_queue,model,optimizer_a)
@@ -376,12 +384,12 @@ def get_cur_model(model):
     # sub_model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
     # return sub_model
     model.module.set_sub_net(switches_normal, switches_reduce)
-
+tb_index = [0, 0, 0]
 R_L1 = 40
 R_L2 = 2
 R_LI = 0.1
 
-def train_arch(step, valid_queue, model, optimizer_a):
+def train_arch(stage, step, valid_queue, model, optimizer_a):
     # for step in range(100):
     try:
         input_search, target_search = next(valid_queue_iter)
@@ -472,9 +480,14 @@ def train_arch(step, valid_queue, model, optimizer_a):
         logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
         logging.info(model.module.normal_probs)
         logging.info(model.module.reduce_probs)
+        for i in range(14):
+            normal_writer[i].add_scalar('normal_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
+        for i in range(14):
+            reduce_writer[i].add_scalar('reduce_arc_{}'.format(stage), np.argmax(model.module.reduce_probs.detach().cpu()[i].numpy()), tb_index[stage])
+        tb_index[stage]+=1
     model.module.restore_super_net()
 
-def train(train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False):
+def train(stage,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -483,7 +496,7 @@ def train(train_queue, valid_queue, model, network_params, criterion, optimizer,
         model.train()
         if training_arch:
             if step % model.module.rl_interval_steps == 0:
-                train_arch(step, valid_queue, model, optimizer_a)
+                train_arch(stage, step, valid_queue, model, optimizer_a)
 
         n = input.size(0)
         input = input.cuda()

@@ -41,11 +41,11 @@ parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path
 parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experiment path')
 parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
-parser.add_argument('--train_portion', type=float, default=0.95, help='portion of training data')
+parser.add_argument('--train_portion', type=float, default=0.5, help='portion of training data')
 # parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-4, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -89,7 +89,9 @@ else:
 
 # To be moved to args
 num_to_keep = [5, 3, 1]
-num_to_drop = [3, 2, 2]
+# num_to_drop = [3, 2, 2]
+normal_num_to_drop = [4, 3, 2]
+reduce_num_to_drop = [2, 2, 1]
 
 def main():
     if not torch.cuda.is_available():
@@ -111,8 +113,8 @@ def main():
     else:
         train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
 
-    # num_train = len(train_data)*0.1
-    num_train = int(len(train_data)*0.2)
+    num_train = len(train_data)
+    # num_train = int(len(train_data)*0.2)
     indices = list(range(num_train))
     split = int(np.floor(args.train_portion * num_train))
 
@@ -140,12 +142,13 @@ def main():
 
     # eps_no_archs = [10, 10, 10]
     # eps_no_archs = [5, 5, 5]
-    eps_no_archs = [1, 1, 1]
-    # eps_no_archs = [0, 0, 0]
+    # eps_no_archs = [1, 1, 1]
+    eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
         # if sp < 1:
         #     continue
-        model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
+        model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), \
+                        criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
         model = nn.DataParallel(model)
         model = model.cuda()
         logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
@@ -175,27 +178,27 @@ def main():
             logging.info('Epoch: %d lr: %e', epoch, lr)
             epoch_start = time.time()
             # training
-            # if epoch < eps_no_arch:
-            # train_arch(valid_queue, model, optimizer_a)
-            if 1:
+            if epoch < eps_no_arch:
+            # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
                 train_acc, train_obj = train(train_queue, model, network_params, criterion, optimizer)
-            if epoch % 2 == 1:
+            else:
                 model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
                 model.module.update_p()
                 train_arch(valid_queue, model, optimizer_a)
-            logging.info('Train_acc %f', train_acc)
+            # logging.info('Train_acc %f', train_acc)
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
             # validation
-            # if epochs - epoch < 5:
-            if 1:
+            if epochs - epoch < 3:
+            # if 1:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
-        print('------Dropping %d paths------' % num_to_drop[sp])
-        # Save switches info for s-c refinement. 
+        print('------Dropping %d paths------' % normal_num_to_drop[sp])
+        print('------Dropping %d paths------' % reduce_num_to_drop[sp])
+        # Save switches info for s-c refinement.
         if sp == len(num_to_keep) - 1:
             switches_normal_2 = copy.deepcopy(switches_normal)
             switches_reduce_2 = copy.deepcopy(switches_reduce)
@@ -209,9 +212,9 @@ def main():
                     idxs.append(j)
             if sp == len(num_to_keep) - 1:
                 # for the last stage, drop all Zero operations
-                drop = get_min_k_no_zero(normal_prob[i, :], idxs, num_to_drop[sp])
+                drop = get_min_k_no_zero(normal_prob[i, :], idxs, normal_num_to_drop[sp])
             else:
-                drop = get_min_k(normal_prob[i, :], num_to_drop[sp])
+                drop = get_min_k(normal_prob[i, :], normal_num_to_drop[sp])
             for idx in drop:
                 switches_normal[i][idxs[idx]] = False
         reduce_prob = F.softmax(arch_param[1], dim=-1).data.cpu().numpy()
@@ -221,9 +224,9 @@ def main():
                 if switches_reduce[i][j]:
                     idxs.append(j)
             if sp == len(num_to_keep) - 1:
-                drop = get_min_k_no_zero(reduce_prob[i, :], idxs, num_to_drop[sp])
+                drop = get_min_k_no_zero(reduce_prob[i, :], idxs, reduce_num_to_drop[sp])
             else:
-                drop = get_min_k(reduce_prob[i, :], num_to_drop[sp])
+                drop = get_min_k(reduce_prob[i, :], reduce_num_to_drop[sp])
             for idx in drop:
                 switches_reduce[i][idxs[idx]] = False
         logging.info('switches_normal = %s', switches_normal)
@@ -293,8 +296,8 @@ def main():
 def get_cur_model(model):
     sm_dim = -1
 
-    switches_normal = [[True for col in range(model.module.switch_on)] for row in range(len(model.module.switches_normal))]
-    switches_reduce = [[True for col in range(model.module.switch_on)] for row in range(len(model.module.switches_normal))]
+    switches_normal = [[True for col in range(model.module.switch_normal_on)] for row in range(len(model.module.switches_normal))]
+    switches_reduce = [[True for col in range(model.module.switch_reduce_on)] for row in range(len(model.module.switches_reduce))]
     # switches_normal = []
     # switches_reduce = []
     # for i in range(14):
@@ -319,7 +322,7 @@ def get_cur_model(model):
         # normal_final[i] = max(normal_prob[i])
         # idx = np.argmax(normal_prob[i], axis = 0)
         # model.module.normal_log_prob[i] = torch.log(torch.from_numpy(np.array(normal_prob[i][idx])))
-        for j in range(model.module.switch_on):
+        for j in range(model.module.switch_normal_on):
             if j != idx:
                 switches_normal[i][j] = False
         # if switches_reduce_2[i][0] == True:
@@ -329,7 +332,7 @@ def get_cur_model(model):
         # reduce_final[i] = max(reduce_prob[i])
         # idx = np.argmax(reduce_prob[i], axis = 0)
         # model.module.reduce_log_prob[i] = torch.log(torch.from_numpy(np.array(reduce_prob[i][idx])))
-        for j in range(model.module.switch_on):
+        for j in range(model.module.switch_reduce_on):
             if j != idx:
                 switches_reduce[i][j] = False
         # Generate Architecture, similar to DARTS
@@ -367,7 +370,7 @@ def get_cur_model(model):
     model.module.set_sub_net(switches_normal, switches_reduce)
 
 def train_arch(valid_queue, model, optimizer_a):
-    for step in range(10):
+    for step, (input, target) in enumerate(valid_queue):
         try:
             input_search, target_search = next(valid_queue_iter)
         except:
@@ -421,13 +424,13 @@ def train_arch(valid_queue, model, optimizer_a):
         #     logging.info(model.module._arch_parameters[0])
         # apply gradients
         optimizer_a.step()
-        if step % args.report == 0:
-        #     logging.info(model.module._arch_parameters[0])
+        if step % args.report_freq == 0:
+            #     logging.info(model.module._arch_parameters[0])
             logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
             logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
-        model.module.restore_super_net()
-        # print(model.module._arch_parameters[0])
-        # print(model.module._arch_parameters[1])
+            logging.info(model.module.normal_probs)
+            logging.info(model.module.reduce_probs)
+    model.module.restore_super_net()
 
 def train(train_queue, model, network_params, criterion, optimizer):
     objs = utils.AvgrageMeter()
@@ -456,7 +459,13 @@ def train(train_queue, model, network_params, criterion, optimizer):
         top5.update(prec5.data.item(), n)
 
         if step % args.report_freq == 0:
-            logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, objs.avg, top1.avg, top5.avg)
+            # logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, objs.avg, top1.avg, top5.avg)
+            logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, loss.data.item(), prec1.data.item(), prec5.data.item())
+            # model.eval()  # 同样的输入input， 在REINFORCE的基础上，加上eval()后，计算所得的prec1 差别就非常大
+            # with torch.no_grad():
+            #     logits = model(input)
+            # prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))
+            # logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f', step, loss.data.item(), prec1.data.item(), prec5.data.item())
             # logging.info(model.module._arch_parameters[0])
         # infer(valid_queue,model,criterion)
     return top1.avg, objs.avg
@@ -466,7 +475,7 @@ def infer(valid_queue, model, criterion):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    model.eval()
+    # model.eval()
 
     for step, (input, target) in enumerate(valid_queue):
         input = input.cuda()
@@ -623,7 +632,7 @@ def keep_2_branches(switches_in, probs):
         n = n + 1
     for i in range(len(switches)):
         if not i in keep:
-            for j in range(len(PRIMITIVES)):
+            for j in range(len(PRIMITIVES_NORMAL)):
                 switches[i][j] = False  
     return switches  
 

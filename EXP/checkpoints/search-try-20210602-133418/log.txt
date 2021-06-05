@@ -1,0 +1,5 @@
+2021-06-02 13:34:18,449 args = Namespace(add_layers=['0', '6', '12'], add_width=['0'], arch_learning_rate=0.01, arch_weight_decay=0, batch_size=192, cifar100=False, cutout=False, cutout_length=16, drop_path_prob=0.3, dropout_rate=['0.1', '0.4', '0.7'], epochs=25, grad_clip=5, init_channels=16, layers=5, learning_rate=0.04, learning_rate_min=0.0, momentum=0.9, note='try', report_freq=20, save='EXP/checkpoints/search-try-20210602-133418', seed=2, tmp_data_dir='data/', train_portion=0.5, weight_decay=0.0003, workers=2)
+2021-06-02 13:34:24,384 param size = 2.217306MB
+2021-06-02 13:34:24,395 Epoch: 0 lr: 3.968521e-02
+2021-06-02 13:34:48,652 TRAIN Step: 000 Objs: 2.322176e+00 R1: 8.333333 R5: 43.750000
+2021-06-02 13:35:24,832 TRAIN Step: 020 Objs: 1.801498e+00 R1: 29.687498 R5: 87.500000
