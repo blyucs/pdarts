@@ -24,8 +24,8 @@ PRIMITIVES_NORMAL = [
   'dil_conv_3x3',
   'dil_conv_5x5',
   'conv 1x1',
-  'conv 3x3',
-  'conv_3x1_1x3'
+  # 'conv 3x3',
+  # 'conv_3x1_1x3'
 ]
 PRIMITIVES_REDUCE = [
   'none',
@@ -102,3 +102,5 @@ PDARTS = Genotype(normal=[('skip_connect', 0), ('dil_conv_3x3', 1), ('skip_conne
 SEARCH_TEST_20210515 = Genotype(normal=[('skip_connect', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 2), ('dil_conv_5x5', 3)], normal_concat=range(2, 6), reduce=[('dil_conv_3x3', 0), ('skip_connect', 1), ('skip_connect', 0), ('dil_conv_5x5', 2), ('avg_pool_3x3', 1), ('dil_conv_5x5', 3), ('dil_conv_5x5', 0), ('sep_conv_5x5', 2)], reduce_concat=range(2, 6))
 SEARCH_TEST_20210525_1948 = Genotype(normal=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('sep_conv_3x3', 1), ('avg_pool_3x3', 2), ('avg_pool_3x3', 3), ('avg_pool_3x3', 2), ('max_pool_3x3', 4)], normal_concat=range(2, 6), reduce=[('avg_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 0), ('sep_conv_5x5', 1), ('avg_pool_3x3', 1), ('skip_connect', 2)], reduce_concat=range(2, 6))
 SEARCH_TEST_20210530 = Genotype(normal=[('conv 3x3', 0), ('conv 3x3', 1), ('conv 3x3', 0), ('conv 3x3', 2), ('conv 3x3', 0), ('conv_3x1_1x3', 3), ('conv 3x3', 0), ('conv 3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_3x3', 0), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+SEARCH_TEST_20210530_MOD_TEST = Genotype(normal=[('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 2), ('conv_3x1_1x3', 0), ('conv_3x1_1x3', 3), ('conv 3x3', 0), ('conv 3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_3x3', 0), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+SEARCH_TEST_STUB = Genotype(normal=[('conv 3x3', 0), ('skip_connect', 1), ('sep_conv_3x3', 0), ('dil_conv_5x5', 2), ('conv 3x3', 0), ('conv_3x1_1x3', 3), ('conv 1x1', 0), ('skip_connect', 1)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_3x3', 0), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))

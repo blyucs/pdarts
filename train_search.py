@@ -105,12 +105,14 @@ best_normal_writer = []
 best_reduce_writer = []
 tb_index = [0, 0, 0]
 best_reward = 0
+max_arch_reward_writer = SummaryWriter(logdir='{}/tb/max_arch_reward'.format(args.save))
 for i in range(14):
     # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     normal_writer.append(SummaryWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     reduce_writer.append(SummaryWriter(logdir='{}/tb/reduce_{}'.format(args.save, i)))
     best_normal_writer.append(SummaryWriter(logdir='{}/tb/best_normal_{}'.format(args.save, i)))
     best_reduce_writer.append(SummaryWriter(logdir='{}/tb/best_reduce_{}'.format(args.save, i)))
+
 def main():
     if not torch.cuda.is_available():
         logging.info('No GPU device available')
@@ -321,77 +323,50 @@ def get_cur_model(model):
 
     switches_normal = [[True for col in range(model.module.switch_normal_on)] for row in range(len(model.module.switches_normal))]
     switches_reduce = [[True for col in range(model.module.switch_reduce_on)] for row in range(len(model.module.switches_reduce))]
-    # switches_normal = []
-    # switches_reduce = []
-    # for i in range(14):
-    #     switches_normal.append([True for j in range(len(PRIMITIVES))])
-    #     switches_reduce.append([True for j in range(len(PRIMITIVES))])
-    # switches_normal_2 = copy.deepcopy(switches_normal)
-    # switches_reduce_2 = copy.deepcopy(switches_reduce)
-    arch_param = model.module.arch_parameters()
-    normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
-    reduce_prob = F.softmax(arch_param[1], dim=sm_dim).data.cpu().numpy()
-    normal_final = [0 for idx in range(14)]
-    reduce_final = [0 for idx in range(14)]
 
     normal_sel_index, reduce_sel_index = model.module.set_log_prob()
 
-    # switches_normal_2[normal_sel_index.data.cpu().numpy()] = False
-
     # remove all Zero operations
     for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
-        # if switches_normal_2[i][0] == True:
-        #     normal_prob[i][0] = 0
-        # normal_final[i] = max(normal_prob[i])
-        # idx = np.argmax(normal_prob[i], axis = 0)
-        # model.module.normal_log_prob[i] = torch.log(torch.from_numpy(np.array(normal_prob[i][idx])))
         for j in range(model.module.switch_normal_on):
             if j != idx:
                 switches_normal[i][j] = False
-        # if switches_reduce_2[i][0] == True:
-        #     reduce_prob[i][0] = 0
 
     for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
-        # reduce_final[i] = max(reduce_prob[i])
-        # idx = np.argmax(reduce_prob[i], axis = 0)
-        # model.module.reduce_log_prob[i] = torch.log(torch.from_numpy(np.array(reduce_prob[i][idx])))
         for j in range(model.module.switch_reduce_on):
             if j != idx:
                 switches_reduce[i][j] = False
-        # Generate Architecture, similar to DARTS
-    # keep_normal = [0, 1]
-    # keep_reduce = [0, 1]
-    # n = 3
-    # start = 2
-    # for i in range(3):  # 选出最大的两个前序节点
-    #     end = start + n
-    #     tbsn = normal_final[start:end]
-    #     tbsr = reduce_final[start:end]
-    #     edge_n = sorted(range(n), key=lambda x: tbsn[x])
-    #     keep_normal.append(edge_n[-1] + start)
-    #     keep_normal.append(edge_n[-2] + start)
-    #     edge_r = sorted(range(n), key=lambda x: tbsr[x])
-    #     keep_reduce.append(edge_r[-1] + start)
-    #     keep_reduce.append(edge_r[-2] + start)
-    #     start = end
-    #     n = n + 1
-    # set switches according the ranking of arch parameters
-    # for i in range(14):
-    #     if not i in keep_normal:
-    #         for j in range(len(PRIMITIVES)):
-    #             switches_normal[i][j] = False
-    #     if not i in keep_reduce:
-    #         for j in range(len(PRIMITIVES)):
-    #             switches_reduce[i][j] = False
 
-    # translate switches into genotype
-    # genotype = parse_network(switches_normal, switches_reduce)
-    # logging.info(genotype)
-    # sub_model = Network(args.init_channels, CIFAR_CLASSES, args.layers + int(add_layers[sp]), False, genotype)
-    # sub_model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
-    # return sub_model
     model.module.set_sub_net(switches_normal, switches_reduce)
     return normal_sel_index, reduce_sel_index
+
+def set_max_model(model):
+    sm_dim = -1
+
+    switches_normal = [[True for col in range(model.module.switch_normal_on)] for row in range(len(model.module.switches_normal))]
+    switches_reduce = [[True for col in range(model.module.switch_reduce_on)] for row in range(len(model.module.switches_reduce))]
+
+    arch_param = model.module.arch_parameters()
+    normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
+    reduce_prob = F.softmax(arch_param[1], dim=sm_dim).data.cpu().numpy()
+    normal_sel_index = np.argmax(normal_prob, 1)
+    reduce_sel_index = np.argmax(reduce_prob, 1)
+
+    # remove all Zero operations
+    for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
+        for j in range(model.module.switch_normal_on):
+            if j != idx:
+                switches_normal[i][j] = False
+
+    for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
+        for j in range(model.module.switch_reduce_on):
+            if j != idx:
+                switches_reduce[i][j] = False
+
+    model.module.set_sub_net(switches_normal, switches_reduce)
+    return normal_sel_index, reduce_sel_index
+
+
 tb_index = [0, 0, 0]
 R_L1 = 40
 R_L2 = 2
@@ -494,9 +469,19 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
     #     logging.info(model.module._arch_parameters[0])
     # apply gradients
     optimizer_a.step()
+
     if step % args.report_freq == 0:
         #     logging.info(model.module._arch_parameters[0])
         logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
+        # valid the argmax arch
+        max_normal_index, max_reduce_index = set_max_model(model)
+        logits= model(input_search)
+        prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
+        logging.info('REINFORCE [step %d]\t\tCurrent Max Architecture Reward %.4f', step, prec1/100)
+        max_arch_reward_writer.add_scalar('max_arch_reward_{}'.format(stage), prec1, tb_index[stage])
+        logging.info(max_normal_index)
+        logging.info(max_reduce_index)
+
         logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
         logging.info(model.module.normal_probs)
         logging.info(model.module.reduce_probs)
@@ -508,6 +493,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
             best_reduce_writer[i].add_scalar('best_reduce_index_{}'.format(stage), best_reduce_indices[i].cpu().numpy(), tb_index[stage])
         best_reward = 0
         tb_index[stage]+=1
+
     model.module.restore_super_net()
 
 def train(stage,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False):

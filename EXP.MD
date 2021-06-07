@@ -6,7 +6,7 @@ eval-try-20210517-111637    基于上面搜索实验得到的架构（number of 
 search-try-20210519-181951  固定supernet,纯测试 reinforce 有效
 search-try-20210520-163122  固定supernet， 纯测试 reinforce 有效
 search-try-20210524-231522  采用随机选择策略，decay 的方式是hansong的方式，出现了 REINFORCE的精度很低（子网），始终跟不上超网的情况；（ 同时出现了valid很差， 也是一直跟不上TRAIN 精度 ---  已确认原因 ）
-search-try-20210525-194830  这个是search-try-20210522-144938 的复现实验， 是argmax 的采样方式，但是decay 不是hansong的方式。目前问题是总是出现POOL
+search-try-20210525-194830  这个是search-try-20210522-144938 的复现实验， 是argmax 的采样方式，但是decay 不是hansong的方式。目前问题是总是出现POOL    --- pooling 的出现是因为“**马太效应**”
 search-try-20210526-110429  基于上一实验， 把 decay 恢复成hansong的方式 , 仍然还是总采集出pooling 操作
 eval-try-20210526-111004  把search-try-20210525-194830搜出的全是pooling 的网络 从头训练600 epoch   达到了95.6, 奇怪的是valid 大于 train 很多是否确实是该架构对valid 数据友好，对train不友好？ 不是，因为用的是test数据集 
 
@@ -18,9 +18,9 @@ search-try-20210528-104454(**pdarts**)   interval 1 lr=1e-2   epoch=40 搜出特
 
 search-try-20210530-192043 (**pdarts**)    基于以上， 把epoch 改为了25 ， 还是出现过拟合（train 95/ valid 85） ， 大部分 CONV 3x3 ， 多了conv 1x1_3x3 . 
 
-search-try-20210602-133418 （**pdarts**）  把reward 改为**random** ， 确认 **REINFROCE** 是否有效 ？？？   **--- 看起来是有效的， 是否还要再做实验  ？？？？**
+search-try-20210602-133418 （**pdarts**）  把reward 改为**random** ， 确认 **REINFROCE** 是否有效 ？？？   **--- 确认是有效的， 是否还要再做实验  ？？？？**
 
-eval-try-20210601-165727  （**pdarts**）把搜出来的几乎全是 CONV 3x3 的模型， 做full training --- valid 精度能到**97.5%** ， 看起来还不错。 
+eval-try-20210601-165727  （**pdarts**）把搜出来的几乎全是 **CONV 3x3** 的模型， 做full training --- valid 精度能到**97.5%** ， 看起来还不错。 
 
 20210606 （pdarts_modify ） 打算对比  1e-2 和  1e-3 ， **最终程序运行失败**，可能爆内存了。 
 
@@ -39,6 +39,18 @@ search-try-20210604-192647     pdarts 上再跑一次随机采样   ，lr =1e-2 
 增加tensorboard scalar   监控每一个操作中，最优index 的变化情况， 划分stage。    **---- 调试OK** 
 
 增加tensorboard 监控  10次 *  20 （间隔） =  **200** 采样中，最大的reward 对应的index  ， 用来看下，operation 是否收敛到了最好的采样， 确认强化的效果（因为是随机采样策略， sample avg reward 已经看不出强化效果了。）  **-- 调试OK** 
+
+**search-try-20210605-153913**  (pdart) ， 预训练 5 轮， 总共25 轮  ， 采样策略为multinominal   ----  conv 3X3 严重， 根据TB ， 很早期即收敛 
+
+**search-try-20210605-181137**  （pdarts_modify）  , 预训练 5 轮， 总共 25 轮， 采样策略为 random    ----  有一定的效果， tb 分析在后期扔有变化，但是在sort 出前序节点以后，dil / sep 被干掉了， 还是只剩下了CONV3X3 . 
+
+search-try-20210607-145425( **pdarts**_modify ) 修改代码， 增加 argmax（index） 后的验证精度。 相当于对policy 的验证， 确认强化学习的效果。 做到off-policy 。   同时，将预训练增加到  15 ， 试图验证 ”一家独大“ 问题 。  以决定是否把工作重心切换到”sep “上面。 
+
+eval-try-20210607-150352 (pdarts)   随便改一个架构，和搜出来的架构进行对比 ， 确认是不是任意一个架构都行 ？？？ 
+
+针对cifar-这样的数据集，并不需要太深的模型 ？？？  ---- 看下pdarts 原文， 其他的文章和综述，是否有针对这个的抨击，讨论.    缩短 step ， layers  等 架构深度超参
+
+把 conv 3x3   conv 1x1_3x3 去掉  ， 采用随机搜索的模式来。   
 
 
 
