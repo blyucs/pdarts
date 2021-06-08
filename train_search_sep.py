@@ -105,6 +105,7 @@ best_reduce_writer = []
 tb_index = [0, 0, 0]
 best_reward = 0
 max_arch_reward_writer = SummaryWriter(logdir='{}/tb/max_arch_reward'.format(args.save))
+best_reward_arch_writer = SummaryWriter(logdir='{}/tb/best_reward_arch'.format(args.save))
 for i in range(14):
     # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     normal_writer.append(SummaryWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
@@ -132,8 +133,8 @@ def main():
     else:
         train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
 
-    num_train = len(train_data)
-    # num_train = int(len(train_data)*0.2)
+    # num_train = len(train_data)
+    num_train = int(len(train_data)*0.2)
     indices = list(range(num_train))
     split = int(np.floor(args.train_portion * num_train))
 
@@ -160,9 +161,9 @@ def main():
     switches_reduce = copy.deepcopy(reduce)
 
     # eps_no_archs = [10, 10, 10]
-    eps_no_archs = [5, 5, 5]
+    # eps_no_archs = [5, 5, 5]
     # eps_no_archs = [1, 1, 1]
-    # eps_no_archs = [0, 0, 0]
+    eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
         # if sp < 1:
         #     continue
@@ -198,7 +199,8 @@ def main():
             logging.info('Epoch: %d lr: %e', epoch, lr)
             epoch_start = time.time()
             # training
-            if epoch < eps_no_arch:
+            # if epoch < eps_no_arch:
+            if epoch % 8 >= 0 and epoch % 8 <=4:
             # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
@@ -363,7 +365,7 @@ def set_max_model(model):
 
 best_normal_indices = []
 best_reduce_indices = []
-def train_arch(valid_queue, model, optimizer_a):
+def train_arch(stage, valid_queue, model, optimizer_a):
     global best_reward
     global best_normal_indices
     global best_reduce_indices
@@ -380,7 +382,7 @@ def train_arch(valid_queue, model, optimizer_a):
         reward_buffer = []
         for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
             # sample the submodel
-        normal_indices, reduce_indices = get_cur_model(model)
+            normal_indices, reduce_indices = get_cur_model(model)
             # validat the sub_model
             with torch.no_grad():
                 # logits, _ = cur_sub_model(input_search)
@@ -401,10 +403,10 @@ def train_arch(valid_queue, model, optimizer_a):
             normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
             reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
             reward_buffer.append(prec1/100)
-        if prec1 > best_reward:
-            best_reward = prec1
-            best_normal_indices = normal_indices
-            best_reduce_indices = reduce_indices
+            if prec1 > best_reward:
+                best_reward = prec1
+                best_normal_indices = normal_indices
+                best_reduce_indices = reduce_indices
         avg_reward = sum(reward_buffer) / model.module.rl_batch_size
         if model.module.baseline == 0:
             model.module.baseline = avg_reward
@@ -428,24 +430,27 @@ def train_arch(valid_queue, model, optimizer_a):
         if step % args.report_freq == 0:
             #     logging.info(model.module._arch_parameters[0])
             logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
-        max_normal_index, max_reduce_index = set_max_model(model)
-        logits= model(input_search)
-        prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
-        logging.info('REINFORCE [step %d]\t\tCurrent Max Architecture Reward %.4f', step, prec1/100)
-        max_arch_reward_writer.add_scalar('max_arch_reward_{}'.format(stage), prec1, tb_index[stage])
-        logging.info(max_normal_index)
-        logging.info(max_reduce_index)
+            max_normal_index, max_reduce_index = set_max_model(model)
+            logits= model(input_search)
+            prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
+            logging.info('REINFORCE [step %d]\t\tCurrent Max Architecture Reward %.4f', step, prec1/100)
+            max_arch_reward_writer.add_scalar('max_arch_reward_{}'.format(stage), prec1, tb_index[stage])
+            logging.info(max_normal_index)
+            logging.info(max_reduce_index)
+            best_reward_arch_writer.add_scalar('best_reward_arch_{}'.format(stage), best_reward, tb_index[stage])
             logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
+
             logging.info(model.module.normal_probs)
             logging.info(model.module.reduce_probs)
-        for i in range(14):
-            normal_writer[i].add_scalar('normal_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
-            best_normal_writer[i].add_scalar('best_normal_index_{}'.format(stage), best_normal_indices[i].cpu().numpy(), tb_index[stage])
-        for i in range(14):
-            reduce_writer[i].add_scalar('reduce_arc_{}'.format(stage), np.argmax(model.module.reduce_probs.detach().cpu()[i].numpy()), tb_index[stage])
-            best_reduce_writer[i].add_scalar('best_reduce_index_{}'.format(stage), best_reduce_indices[i].cpu().numpy(), tb_index[stage])
-        best_reward = 0
-        tb_index[stage]+=1
+
+            for i in range(14):
+                normal_writer[i].add_scalar('normal_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
+                best_normal_writer[i].add_scalar('best_normal_index_{}'.format(stage), best_normal_indices[i].cpu().numpy(), tb_index[stage])
+            for i in range(14):
+                reduce_writer[i].add_scalar('reduce_arc_{}'.format(stage), np.argmax(model.module.reduce_probs.detach().cpu()[i].numpy()), tb_index[stage])
+                best_reduce_writer[i].add_scalar('best_reduce_index_{}'.format(stage), best_reduce_indices[i].cpu().numpy(), tb_index[stage])
+            best_reward = 0
+            tb_index[stage]+=1
     model.module.restore_super_net()
 
 def train(stage, train_queue, model, network_params, criterion, optimizer):

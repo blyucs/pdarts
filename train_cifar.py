@@ -34,7 +34,7 @@ parser.add_argument('--cutout_length', type=int, default=16, help='cutout length
 parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path probability')
 parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experiment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
-parser.add_argument('--arch', type=str, default='SEARCH_TEST_20210530_MOD_TEST', help='which architecture to use')
+parser.add_argument('--arch', type=str, default='SEARCH_TEST_20210607_145425', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
 parser.add_argument('--note', type=str, default='try', help='note for this run')

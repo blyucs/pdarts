@@ -96,7 +96,8 @@ else:
 # To be moved to args
 num_to_keep = [5, 3, 1]
 # num_to_drop = [3, 2, 2]
-normal_num_to_drop = [4, 3, 2]
+# normal_num_to_drop = [4, 3, 2]
+normal_num_to_drop = [3, 2, 2]
 reduce_num_to_drop = [2, 2, 1]
 # handler = SummaryWriter(log_dir=args.save)
 normal_writer = []
@@ -106,6 +107,7 @@ best_reduce_writer = []
 tb_index = [0, 0, 0]
 best_reward = 0
 max_arch_reward_writer = SummaryWriter(logdir='{}/tb/max_arch_reward'.format(args.save))
+best_reward_arch_writer = SummaryWriter(logdir='{}/tb/best_reward_arch'.format(args.save))
 for i in range(14):
     # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     normal_writer.append(SummaryWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
@@ -162,7 +164,8 @@ def main():
     switches_reduce = copy.deepcopy(reduce)
 
     # eps_no_archs = [10, 10, 10]
-    eps_no_archs = [5, 5, 5]
+    # eps_no_archs = [5, 5, 5]
+    eps_no_archs = [15, 15, 15]
     # eps_no_archs = [1, 1, 1]
     # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
@@ -481,6 +484,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         max_arch_reward_writer.add_scalar('max_arch_reward_{}'.format(stage), prec1, tb_index[stage])
         logging.info(max_normal_index)
         logging.info(max_reduce_index)
+        best_reward_arch_writer.add_scalar('best_reward_arch_{}'.format(stage), best_reward, tb_index[stage])
 
         logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
         logging.info(model.module.normal_probs)
