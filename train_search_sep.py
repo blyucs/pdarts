@@ -36,7 +36,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=200, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=5, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -95,7 +95,8 @@ else:
 # To be moved to args
 num_to_keep = [5, 3, 1]
 # num_to_drop = [3, 2, 2]
-normal_num_to_drop = [4, 3, 2]
+# normal_num_to_drop = [4, 3, 2]
+normal_num_to_drop = [3, 2, 2]
 reduce_num_to_drop = [2, 2, 1]
 # handler = SummaryWriter(log_dir=args.save)
 normal_writer = []
@@ -133,8 +134,8 @@ def main():
     else:
         train_data = dset.CIFAR10(root=args.tmp_data_dir, train=True, download=True, transform=train_transform)
 
-    # num_train = len(train_data)
-    num_train = int(len(train_data)*0.2)
+    num_train = len(train_data)
+    # num_train = int(len(train_data)*0.2)
     indices = list(range(num_train))
     split = int(np.floor(args.train_portion * num_train))
 
@@ -165,7 +166,7 @@ def main():
     # eps_no_archs = [1, 1, 1]
     eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
-        # if sp < 1:
+        # if sp < 2:
         #     continue
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), \
                         criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
@@ -200,7 +201,8 @@ def main():
             epoch_start = time.time()
             # training
             # if epoch < eps_no_arch:
-            if epoch % 8 >= 0 and epoch % 8 <=4:
+            # if epoch % 8 >= 0 and epoch % 8 <=4:
+            if epoch < 50:
             # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
@@ -213,7 +215,7 @@ def main():
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
             # validation
-            if epochs - epoch < 5:
+            if epochs - epoch < 3:
             # if 1:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
@@ -429,7 +431,7 @@ def train_arch(stage, valid_queue, model, optimizer_a):
         optimizer_a.step()
         if step % args.report_freq == 0:
             #     logging.info(model.module._arch_parameters[0])
-            logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
+            logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f\tBest Sampled Reward %.4f', step, avg_reward, model.module.baseline, best_reward)
             max_normal_index, max_reduce_index = set_max_model(model)
             logits= model(input_search)
             prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
@@ -496,7 +498,7 @@ def infer(valid_queue, model, criterion):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    # model.eval()
+    model.eval()
 
     for step, (input, target) in enumerate(valid_queue):
         input = input.cuda()

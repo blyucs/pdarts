@@ -37,7 +37,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=20, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -100,18 +100,20 @@ num_to_keep = [5, 3, 1]
 normal_num_to_drop = [3, 2, 2]
 reduce_num_to_drop = [2, 2, 1]
 # handler = SummaryWriter(log_dir=args.save)
-normal_writer = []
-reduce_writer = []
+normal_max_writer = []
+reduce_max_writer = []
 best_normal_writer = []
 best_reduce_writer = []
+normal_min_writer = []
+reduce_min_writer = []
 tb_index = [0, 0, 0]
 best_reward = 0
 max_arch_reward_writer = SummaryWriter(logdir='{}/tb/max_arch_reward'.format(args.save))
 best_reward_arch_writer = SummaryWriter(logdir='{}/tb/best_reward_arch'.format(args.save))
 for i in range(14):
     # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
-    normal_writer.append(SummaryWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
-    reduce_writer.append(SummaryWriter(logdir='{}/tb/reduce_{}'.format(args.save, i)))
+    normal_max_writer.append(SummaryWriter(logdir='{}/tb/normal_max_{}'.format(args.save, i)))
+    reduce_max_writer.append(SummaryWriter(logdir='{}/tb/reduce_max_{}'.format(args.save, i)))
     best_normal_writer.append(SummaryWriter(logdir='{}/tb/best_normal_{}'.format(args.save, i)))
     best_reduce_writer.append(SummaryWriter(logdir='{}/tb/best_reduce_{}'.format(args.save, i)))
 
@@ -163,14 +165,27 @@ def main():
     switches_normal = copy.deepcopy(normal)
     switches_reduce = copy.deepcopy(reduce)
 
-    # eps_no_archs = [10, 10, 10]
+    eps_no_archs = [10, 10, 10]
     # eps_no_archs = [5, 5, 5]
-    eps_no_archs = [15, 15, 15]
+    # eps_no_archs = [15, 15, 15]
     # eps_no_archs = [1, 1, 1]
     # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
         # if sp < 1:
         #     continue
+        normal_min_writer.clear()
+        reduce_min_writer.clear()
+        for i in range(14):
+            normal_min_writer_per = []
+            for j in range(normal_num_to_drop[sp]):
+                normal_min_writer_per.append(SummaryWriter(logdir='{}/tb/normal_min_{}_{}'.format(args.save, i, j)))
+            normal_min_writer.append(normal_min_writer_per)
+
+            reduce_min_writer_per = []
+            for j in range(reduce_num_to_drop[sp]):
+                reduce_min_writer_per.append(SummaryWriter(logdir='{}/tb/reduce_min_{}_{}'.format(args.save, i, j)))
+            reduce_min_writer.append(reduce_min_writer_per)
+
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), \
                         criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
         model = nn.DataParallel(model)
@@ -475,8 +490,8 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
 
     if step % args.report_freq == 0:
         #     logging.info(model.module._arch_parameters[0])
-        logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f', step, avg_reward, model.module.baseline)
         # valid the argmax arch
+        logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f\tBest Sampled Reward %.4f', step, avg_reward, model.module.baseline, best_reward)
         max_normal_index, max_reduce_index = set_max_model(model)
         logits= model(input_search)
         prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
@@ -490,11 +505,23 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         logging.info(model.module.normal_probs)
         logging.info(model.module.reduce_probs)
         for i in range(14):
-            normal_writer[i].add_scalar('normal_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
+            normal_max_writer[i].add_scalar('normal_max_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
+
+            normal_min_k = get_min_k(model.module.normal_probs.detach().cpu()[i].numpy(), normal_num_to_drop[stage])
+            for j in range(normal_num_to_drop[stage]):
+                normal_min_writer[i][j].add_scalar('normal_min_arch_{}_{}'.format(stage, j), normal_min_k[j], tb_index[stage])
+
             best_normal_writer[i].add_scalar('best_normal_index_{}'.format(stage), best_normal_indices[i].cpu().numpy(), tb_index[stage])
+
         for i in range(14):
-            reduce_writer[i].add_scalar('reduce_arc_{}'.format(stage), np.argmax(model.module.reduce_probs.detach().cpu()[i].numpy()), tb_index[stage])
+            reduce_max_writer[i].add_scalar('reduce_max_arch_{}'.format(stage), np.argmax(model.module.reduce_probs.detach().cpu()[i].numpy()), tb_index[stage])
+
+            reduce_min_k = get_min_k(model.module.reduce_probs.detach().cpu()[i].numpy(), reduce_num_to_drop[stage])
+            for j in range(reduce_num_to_drop[stage]):
+                reduce_min_writer[i][j].add_scalar('reduce_min_arch_{}_{}'.format(stage, j), reduce_min_k[j], tb_index[stage])
+
             best_reduce_writer[i].add_scalar('best_reduce_index_{}'.format(stage), best_reduce_indices[i].cpu().numpy(), tb_index[stage])
+
         best_reward = 0
         tb_index[stage]+=1
 
@@ -547,7 +574,7 @@ def infer(valid_queue, model, criterion):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    # model.eval()
+    model.eval()
 
     for step, (input, target) in enumerate(valid_queue):
         input = input.cuda()
