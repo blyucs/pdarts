@@ -143,7 +143,7 @@ class Network(nn.Module):
         self.baseline_decay_weight = 0.95
         self.rl_batch_size = 10
         self.rl_interval_steps = 1
-        self.epsilon = 0.6
+        self.epsilon = 0.0
     def forward(self, input):
         # print("fuck %d" % self.forward_type)
         s0 = s1 = self.stem(input)
@@ -240,8 +240,8 @@ class Network(nn.Module):
             normal_sample = normal_sample.unsqueeze(1)
             reduce_sample = reduce_sample.unsqueeze(1)
 
-        self.normal_log_prob = torch.log(torch.gather(normal_probs, 1, normal_sample))
-        self.reduce_log_prob = torch.log(torch.gather(reduce_probs, 1, reduce_sample))
+        self.normal_log_prob = torch.log(torch.gather(normal_probs,1,normal_sample))
+        self.reduce_log_prob = torch.log(torch.gather(reduce_probs,1,reduce_sample))
         return normal_sample, reduce_sample
 
     def set_sub_net(self, switch_normal, switch_reduce):

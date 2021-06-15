@@ -28,7 +28,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
 # parser.add_argument('--batch_size', type=int, default=96, help='batch size')
-parser.add_argument('--batch_size', type=int, default=192, help='batch size')
+parser.add_argument('--batch_size', type=int, default=256, help='batch size')
 # parser.add_argument('--batch_size', type=int, default=32, help='batch size')
 # parser.add_argument('--batch_size', type=int, default=12, help='batch size')
 # parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
@@ -37,7 +37,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=20, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=35, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -51,9 +51,9 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 # parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
-# parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
-parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
+parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
+# parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
 parser.add_argument('--note', type=str, default='try', help='note for this run')
 parser.add_argument('--dropout_rate', action='append', default=[], help='dropout rate of skip connect')
@@ -96,8 +96,8 @@ else:
 # To be moved to args
 num_to_keep = [5, 3, 1]
 # num_to_drop = [3, 2, 2]
-# normal_num_to_drop = [4, 3, 2]
-normal_num_to_drop = [3, 2, 2]
+normal_num_to_drop = [4, 3, 2]
+# normal_num_to_drop = [3, 2, 2]
 reduce_num_to_drop = [2, 2, 1]
 # handler = SummaryWriter(log_dir=args.save)
 normal_max_writer = []
@@ -165,7 +165,7 @@ def main():
     switches_normal = copy.deepcopy(normal)
     switches_reduce = copy.deepcopy(reduce)
 
-    eps_no_archs = [10, 10, 10]
+    eps_no_archs = [20, 20, 20]
     # eps_no_archs = [5, 5, 5]
     # eps_no_archs = [15, 15, 15]
     # eps_no_archs = [1, 1, 1]
@@ -200,10 +200,10 @@ def main():
                 args.learning_rate,
                 momentum=args.momentum,
                 weight_decay=args.weight_decay)
-        # optimizer_a = torch.optim.Adam(model.module.arch_parameters(),
-        #             lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
         optimizer_a = torch.optim.Adam(model.module.arch_parameters(),
-                                       lr=args.arch_learning_rate, betas=(0, 0.999), weight_decay=args.arch_weight_decay)
+                    lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
+        # optimizer_a = torch.optim.Adam(model.module.arch_parameters(),
+        #                                lr=args.arch_learning_rate, betas=(0, 0.999), weight_decay=args.arch_weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 optimizer, float(args.epochs), eta_min=args.learning_rate_min)
         sm_dim = -1
@@ -486,6 +486,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
     #     logging.info(model.module._arch_parameters[0].grad.data)
     #     logging.info(model.module._arch_parameters[0])
     # apply gradients
+    nn.utils.clip_grad_norm_(model.module.arch_parameters(), args.grad_clip)
     optimizer_a.step()
 
     if step % args.report_freq == 0:
@@ -502,8 +503,11 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         best_reward_arch_writer.add_scalar('best_reward_arch_{}'.format(stage), best_reward, tb_index[stage])
 
         logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
-        logging.info(model.module.normal_probs)
-        logging.info(model.module.reduce_probs)
+        # logging.info(model.module.normal_probs)
+        # logging.info(model.module.reduce_probs)
+        logging.info(model.module.alphas_normal)
+        logging.info(model.module.alphas_reduce)
+
         for i in range(14):
             normal_max_writer[i].add_scalar('normal_max_arch_{}'.format(stage), np.argmax(model.module.normal_probs.detach().cpu()[i].numpy()), tb_index[stage])
 

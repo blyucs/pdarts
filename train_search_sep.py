@@ -36,7 +36,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=200, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=40, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=5, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -166,7 +166,7 @@ def main():
     # eps_no_archs = [1, 1, 1]
     eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
-        # if sp < 2:
+        # if sp < 1:
         #     continue
         model = Network(args.init_channels + int(add_width[sp]), CIFAR_CLASSES, args.layers + int(add_layers[sp]), \
                         criterion, switches_normal=switches_normal, switches_reduce=switches_reduce, p=float(drop_rate[sp]))
@@ -202,7 +202,7 @@ def main():
             # training
             # if epoch < eps_no_arch:
             # if epoch % 8 >= 0 and epoch % 8 <=4:
-            if epoch < 50:
+            if epoch < 20:
             # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
@@ -498,7 +498,7 @@ def infer(valid_queue, model, criterion):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    model.eval()
+    model.eval()   # 最好还是加上，否则导致BN层改变，影响整个网络性能
 
     for step, (input, target) in enumerate(valid_queue):
         input = input.cuda()
