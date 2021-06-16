@@ -21,9 +21,11 @@ from art.metrics import clever_u,clever_t,clever
 from art.attacks.evasion import FastGradientMethod, ProjectedGradientDescent
 from art.estimators.classification import PyTorchClassifier
 from tensorboardX import SummaryWriter
+from thop import profile, clever_format
 import tensorflow as tf
 os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 # os.environ["CUDA_VISIBLE_DEVICES"]="1"   # batchsize
+import math
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
@@ -37,7 +39,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=35, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=10, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -51,7 +53,8 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 # parser.add_argument('--train_portion', type=float, default=0.01, help='portion of training data')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
+# parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -107,9 +110,10 @@ best_reduce_writer = []
 normal_min_writer = []
 reduce_min_writer = []
 tb_index = [0, 0, 0]
-best_reward = 0
+best_prec1 = 0
 max_arch_reward_writer = SummaryWriter(logdir='{}/tb/max_arch_reward'.format(args.save))
 best_reward_arch_writer = SummaryWriter(logdir='{}/tb/best_reward_arch'.format(args.save))
+avg_params_writer = SummaryWriter(logdir='{}/tb/avg_params'.format(args.save))
 for i in range(14):
     # normal_writer.append(tf.summary.FileWriter(logdir='{}/tb/normal_{}'.format(args.save, i)))
     normal_max_writer.append(SummaryWriter(logdir='{}/tb/normal_max_{}'.format(args.save, i)))
@@ -171,7 +175,7 @@ def main():
     # eps_no_archs = [1, 1, 1]
     # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
-        # if sp < 1:
+        # if sp < 2:
         #     continue
         normal_min_writer.clear()
         reduce_min_writer.clear()
@@ -356,7 +360,8 @@ def get_cur_model(model):
                 switches_reduce[i][j] = False
 
     model.module.set_sub_net(switches_normal, switches_reduce)
-    return normal_sel_index, reduce_sel_index
+    genotype =parse_network(switches_normal, switches_reduce)
+    return normal_sel_index, reduce_sel_index, genotype
 
 def set_max_model(model):
     sm_dim = -1
@@ -382,7 +387,8 @@ def set_max_model(model):
                 switches_reduce[i][j] = False
 
     model.module.set_sub_net(switches_normal, switches_reduce)
-    return normal_sel_index, reduce_sel_index
+    # genotype =parse_network(switches_normal, switches_reduce)
+    return normal_sel_index, reduce_sel_index#, genotype
 
 
 tb_index = [0, 0, 0]
@@ -393,7 +399,7 @@ R_LI = 0.1
 best_normal_indices = []
 best_reduce_indices = []
 def train_arch(stage, step, valid_queue, model, optimizer_a):
-    global best_reward
+    global best_prec1
     global best_normal_indices
     global best_reduce_indices
     # for step in range(100):
@@ -407,7 +413,9 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
     normal_grad_buffer = []
     reduce_grad_buffer = []
     reward_buffer = []
-
+    params_buffer = []
+    flops_list = []
+    params_list = []
     # cifar_mu = np.ones((3, 32, 32))
     # cifar_mu[0, :, :] = 0.4914
     # cifar_mu[1, :, :] = 0.4822
@@ -433,16 +441,26 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
 
     for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
         # sample the submodel
-        normal_indices, reduce_indices = get_cur_model(model)
+        normal_indices, reduce_indices, genotype = get_cur_model(model)
         # attack = FastGradientMethod(estimator=model, eps=0.2)
         # x_test_adv = attack.generate(x=x_test)
         # res = clever_u(classifier,valid_queue.dataset.data[-1].transpose(2,0,1) , 2, 2, R_LI, norm=np.inf, pool_factor=3)
         # print(res)
         # validat the sub_model
         with torch.no_grad():
-            # logits, _ = cur_sub_model(input_search)
             logits= model(input_search)
             prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
+        sub_model = NetworkCIFAR(36, CIFAR_CLASSES, 20, False, genotype)
+        sub_model.drop_path_prob = 0
+        # para0 = utils.count_parameters_in_MB(sub_model)
+        input = torch.randn(1,3,32,32)
+        flops, params = profile(sub_model, inputs = (input,), )
+        flops_s, params_s = clever_format([flops, params], "%.3f")
+        flops, params = flops/1e9, params/1e6
+        params_buffer.append(params)
+        flops_list.append(flops_s)
+        params_list.append(params_s)
+
             # prec1 = np.random.rand()
         if model.module._arch_parameters[0].grad is not None:
             model.module._arch_parameters[0].grad.data.zero_()
@@ -458,16 +476,20 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         # take out gradient dict
         normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
         reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
-        reward_buffer.append(prec1/100)
+        reward = calculate_reward(prec1, params)
+        reward_buffer.append(reward)
         # recode best_reward index
-        if prec1 > best_reward:
-            best_reward = prec1
+        if prec1 > best_prec1:
+            best_prec1 = prec1
             best_normal_indices = normal_indices
             best_reduce_indices = reduce_indices
         # else:
         #     best_normal_indices = []
         #     best_reduce_indices = []
+    logging.info(flops_list)
+    logging.info(params_list)
     avg_reward = sum(reward_buffer) / model.module.rl_batch_size
+    avg_params = sum(params_buffer) / model.module.rl_batch_size
     if model.module.baseline == 0:
         model.module.baseline = avg_reward
     else:
@@ -492,15 +514,16 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
     if step % args.report_freq == 0:
         #     logging.info(model.module._arch_parameters[0])
         # valid the argmax arch
-        logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f\tBest Sampled Reward %.4f', step, avg_reward, model.module.baseline, best_reward)
+        logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f\tBest Sampled Prec1 %.4f', step, avg_reward, model.module.baseline, best_prec1)
         max_normal_index, max_reduce_index = set_max_model(model)
         logits= model(input_search)
         prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
-        logging.info('REINFORCE [step %d]\t\tCurrent Max Architecture Reward %.4f', step, prec1/100)
+        logging.info('REINFORCE [step %d]\t\tCurrent Max Architecture Reward %.4f\t\tAvarage Params %.3f', step, prec1/100, avg_params)
         max_arch_reward_writer.add_scalar('max_arch_reward_{}'.format(stage), prec1, tb_index[stage])
+        avg_params_writer.add_scalar('avg_params_{}'.format(stage), avg_params, tb_index[stage])
         logging.info(max_normal_index)
         logging.info(max_reduce_index)
-        best_reward_arch_writer.add_scalar('best_reward_arch_{}'.format(stage), best_reward, tb_index[stage])
+        best_reward_arch_writer.add_scalar('best_prec1_arch_{}'.format(stage), best_prec1, tb_index[stage])
 
         logging.info(np.around(torch.Tensor(reward_buffer).numpy(),3))
         # logging.info(model.module.normal_probs)
@@ -526,7 +549,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
 
             best_reduce_writer[i].add_scalar('best_reduce_index_{}'.format(stage), best_reduce_indices[i].cpu().numpy(), tb_index[stage])
 
-        best_reward = 0
+        best_prec1 = 0
         tb_index[stage]+=1
 
     model.module.restore_super_net()
@@ -546,6 +569,7 @@ def train(stage,train_queue, valid_queue, model, network_params, criterion, opti
         input = input.cuda()
         target = target.cuda(non_blocking=True)
 
+        # para1 = utils.count_parameters_in_MB(model)
         optimizer.zero_grad()
         logits = model(input)
         loss = criterion(logits, target)
@@ -598,6 +622,24 @@ def infer(valid_queue, model, criterion):
 
     return top1.avg, objs.avg
 
+a = 1
+# b = 0.0
+# c = 1
+P_base = 3.4
+# D_base = 0.8
+# F_base = 1.4
+alpha = -0.2
+# beta = -0.4
+# gamma = -0.6
+
+def calculate_reward(prec1, params):
+
+    mo_params_coe = a * math.pow(params/P_base, alpha)   #params M
+    # mo_delay_coe = b * math.pow(delay/D_base, beta)  #inference delay S
+    # mo_flops_coe = c * math.pow(flops/F_base, gamma)    # flops G
+    # reward = prec1 * ( mo_params_coe +  mo_delay_coe + mo_flops_coe)
+    reward = prec1 * ( mo_params_coe )
+    return reward
 
 def parse_network(switches_normal, switches_reduce):
 
