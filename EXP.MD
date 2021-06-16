@@ -299,7 +299,11 @@ parts  搜索出一个最大的网络  全是 conv 3X3 。
 
 29. 加入参数量的  惩罚    的搜索实验  先把 LR 设置为 1e-2 看效果  。   构建网络时，先不去做最优edge 选取  \subsection{Effect of the model compression}。 
 
-30.  
+    一个 alpha = 0.0
+
+    一个alpha = -0.2
+
+30.  pdarts  original 的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1    .   
 
 
 
