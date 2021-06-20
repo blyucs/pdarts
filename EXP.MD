@@ -299,11 +299,33 @@ parts  搜索出一个最大的网络  全是 conv 3X3 。
 
 29. 加入参数量的  惩罚    的搜索实验  先把 LR 设置为 1e-2 看效果  。   构建网络时，先不去做最优edge 选取  \subsection{Effect of the model compression}。 
 
-    一个 alpha = 0.0
+    一个 alpha = 0.0   ：  对比效果明显      search-try-20210616-172404
 
-    一个alpha = -0.2
+    一个alpha = -0.2   :  压缩效果明显   search-try-20210616-172415
 
-30.  pdarts  original 的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1    .   
+    ![image-20210620101509740](EXP/image-20210620101509740.png)
+    
+    **上面编码存在问题。** 
+    
+30. 解决上述编码问题，对比实验：
+
+    一个alpha = -0.2   （pdarts_modify）:  还是原来的get_max_model的编码方式   search-try-20210619-223622
+
+    ![image-20210620101634067](EXP/image-20210620101634067.png)
+
+    alpha = -0.2 （pdarts）： 修改代码后的实验   search-try-20210619-235535
+
+    alpha = 0.0 （pdarts）： 修改代码后的实验 
+
+
+
+
+
+
+
+29. pdarts  original 的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1    .   
+30. 确认  pdarts_modify  环境跑的慢，是否是torch 等conda 环境问题， 新建了pdart_conda 
+31. 
 
 
 
@@ -378,7 +400,7 @@ parts  搜索出一个最大的网络  全是 conv 3X3 。
 
 
 
-SHEBO：  随机采集出来的  最好架构 中的10个  ， 可以取平均， 然后和当前收敛的架构进行比较。 收敛的不能和这个平均值持平  ？？？？？、  --- 需要实验体现出来。 
+SBO：  随机采集出来的  最好架构 中的10个  ， 可以取平均， 然后和当前收敛的架构进行比较。 收敛的不能和这个平均值持平  ？？？？？、  --- 需要实验体现出来。 
 
 
 

@@ -226,11 +226,13 @@ def main():
             # if 0:
                 model.module.p = float(drop_rate[sp]) * (epochs - epoch - 1) / epochs
                 model.module.update_p()
-                train_acc, train_obj = train(sp,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False)
+                train_acc, train_obj = train(sp,train_queue, valid_queue, model, network_params, criterion, optimizer, \
+                                             optimizer_a, switches_normal, switches_reduce, training_arch = False)
             else:
                 model.module.p = float(drop_rate[sp]) * np.exp(-(epoch - eps_no_arch) * scale_factor) 
                 model.module.update_p()
-                train_acc, train_obj = train(sp,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = True)
+                train_acc, train_obj = train(sp,train_queue, valid_queue, model, network_params, criterion, optimizer, \
+                                             optimizer_a, switches_normal, switches_reduce, training_arch = True)
                 # if epoch % 3 == 0:
                 # if 1:
                 #     train_arch(valid_queue,model,optimizer_a)
@@ -340,34 +342,48 @@ def main():
                 genotype = parse_network(switches_normal, switches_reduce)
                 logging.info(genotype)              
 
-def get_cur_model(model):
+def get_cur_model(model, cur_switches_normal, cur_switches_reduce):
     sm_dim = -1
 
-    switches_normal = [[True for col in range(model.module.switch_normal_on)] for row in range(len(model.module.switches_normal))]
-    switches_reduce = [[True for col in range(model.module.switch_reduce_on)] for row in range(len(model.module.switches_reduce))]
+    switches_normal = [[False for col in range(len(PRIMITIVES_NORMAL))] for row in range(len(model.module.switches_normal))]
+    switches_reduce = [[False for col in range(len(PRIMITIVES_REDUCE))] for row in range(len(model.module.switches_reduce))]
 
     normal_sel_index, reduce_sel_index = model.module.set_log_prob()
+    #logging.info(normal_sel_index)
+    #logging.info(reduce_sel_index)
+    for i in range(14):
+        idxs = []
+        for j in range(len(PRIMITIVES_NORMAL)):
+            if cur_switches_normal[i][j]:
+                idxs.append(j)
+        #logging.info(idxs)
+        switches_normal[i][idxs[normal_sel_index[i]]] = True
+    # for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
+    #     for j in range(model.module.switch_reduce_on):
+    #         if j != idx:
+    #             switches_reduce[i][j] = False
+    for i in range(14):
+        idxs = []
+        for j in range(len(PRIMITIVES_REDUCE)):
+            if cur_switches_reduce[i][j]:
+                idxs.append(j)
+        switches_reduce[i][idxs[reduce_sel_index[i]]] = True
 
-    # remove all Zero operations
-    for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
-        for j in range(model.module.switch_normal_on):
-            if j != idx:
-                switches_normal[i][j] = False
+    # model.module.set_sub_net(switches_normal, switches_reduce)
+    model.module.set_sub_net(normal_sel_index, reduce_sel_index)
+    # switches_normal = [[False, False, False, False, False, False, False, False, False, True], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, True, False, False, False, False, False, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, True, False, False, False, False, False, False], [False, False, True, False, False, False, False, False, False, False]]
+    # with none
+    # switches_normal = [[False, False, False, False, False, False, False, False, False, True], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, False, True, False], [None, False, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, True, False, False, False, False, False, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, False, False, False, True, False], [False, False, False, False, False, False, False, False, True, False], [True, False, False, False, False, False, False, False, False, False], [True, False, False, False, False, False, False, False, False, False]]
+    # switches_reduce = [[False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, False, True, False, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, True, False, False, False, False], [False, False, True, False, False, False], [False, False, True, False, False, False], [False, True, False, False, False, False], [False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False]]
 
-    for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
-        for j in range(model.module.switch_reduce_on):
-            if j != idx:
-                switches_reduce[i][j] = False
-
-    model.module.set_sub_net(switches_normal, switches_reduce)
     genotype =parse_network(switches_normal, switches_reduce)
     return normal_sel_index, reduce_sel_index, genotype
 
-def set_max_model(model):
+def set_max_model(model, cur_switches_normal, cur_switches_reduce):
     sm_dim = -1
 
-    switches_normal = [[True for col in range(model.module.switch_normal_on)] for row in range(len(model.module.switches_normal))]
-    switches_reduce = [[True for col in range(model.module.switch_reduce_on)] for row in range(len(model.module.switches_reduce))]
+    switches_normal = [[False for col in range(len(PRIMITIVES_NORMAL))] for row in range(len(model.module.switches_normal))]
+    switches_reduce = [[False for col in range(len(PRIMITIVES_REDUCE))] for row in range(len(model.module.switches_reduce))]
 
     arch_param = model.module.arch_parameters()
     normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
@@ -376,17 +392,29 @@ def set_max_model(model):
     reduce_sel_index = np.argmax(reduce_prob, 1)
 
     # remove all Zero operations
-    for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
-        for j in range(model.module.switch_normal_on):
-            if j != idx:
-                switches_normal[i][j] = False
+    # for i,idx in enumerate(normal_sel_index):   # 采样 需要挪到train 里面去
+    #     for j in range(model.module.switch_normal_on):
+    #         if j != idx:
+    #             switches_normal[i][j] = False
+    for i in range(14):
+        idxs = []
+        for j in range(len(PRIMITIVES_NORMAL)):
+            if cur_switches_normal[i][j]:
+                idxs.append(j)
+        switches_normal[i][idxs[normal_sel_index[i]]] = True
+    # for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
+    #     for j in range(model.module.switch_reduce_on):
+    #         if j != idx:
+    #             switches_reduce[i][j] = False
+    for i in range(14):
+        idxs = []
+        for j in range(len(PRIMITIVES_REDUCE)):
+            if cur_switches_reduce[i][j]:
+                idxs.append(j)
+        switches_reduce[i][idxs[reduce_sel_index[i]]] = True
 
-    for i,idx in enumerate(reduce_sel_index):   # 采样 需要挪到train 里面去
-        for j in range(model.module.switch_reduce_on):
-            if j != idx:
-                switches_reduce[i][j] = False
-
-    model.module.set_sub_net(switches_normal, switches_reduce)
+    # model.module.set_sub_net(switches_normal, switches_reduce)
+    model.module.set_sub_net(normal_sel_index, reduce_sel_index)
     # genotype =parse_network(switches_normal, switches_reduce)
     return normal_sel_index, reduce_sel_index#, genotype
 
@@ -398,7 +426,7 @@ R_LI = 0.1
 
 best_normal_indices = []
 best_reduce_indices = []
-def train_arch(stage, step, valid_queue, model, optimizer_a):
+def train_arch(stage, step, valid_queue, model, optimizer_a, cur_switches_normal, cur_switches_reduce ):
     global best_prec1
     global best_normal_indices
     global best_reduce_indices
@@ -441,7 +469,10 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
 
     for batch_idx in range(model.module.rl_batch_size): # 多采集几个网络，测试
         # sample the submodel
-        normal_indices, reduce_indices, genotype = get_cur_model(model)
+        # if stage == 1:
+        #     print("ok")
+        normal_indices, reduce_indices, genotype = get_cur_model(model, cur_switches_normal, cur_switches_reduce)
+        # return 0.0, 0.0
         # attack = FastGradientMethod(estimator=model, eps=0.2)
         # x_test_adv = attack.generate(x=x_test)
         # res = clever_u(classifier,valid_queue.dataset.data[-1].transpose(2,0,1) , 2, 2, R_LI, norm=np.inf, pool_factor=3)
@@ -460,6 +491,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         params_buffer.append(params)
         flops_list.append(flops_s)
         params_list.append(params_s)
+
 
             # prec1 = np.random.rand()
         if model.module._arch_parameters[0].grad is not None:
@@ -488,6 +520,9 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         #     best_reduce_indices = []
     logging.info(flops_list)
     logging.info(params_list)
+    logging.info(normal_indices.detach().cpu().numpy().squeeze())
+    logging.info(reduce_indices.detach().cpu().numpy().squeeze())
+    logging.info(genotype)
     avg_reward = sum(reward_buffer) / model.module.rl_batch_size
     avg_params = sum(params_buffer) / model.module.rl_batch_size
     if model.module.baseline == 0:
@@ -515,7 +550,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
         #     logging.info(model.module._arch_parameters[0])
         # valid the argmax arch
         logging.info('REINFORCE [step %d]\t\tMean Reward %.4f\tBaseline %.4f\tBest Sampled Prec1 %.4f', step, avg_reward, model.module.baseline, best_prec1)
-        max_normal_index, max_reduce_index = set_max_model(model)
+        max_normal_index, max_reduce_index = set_max_model(model, cur_switches_normal, cur_switches_reduce)
         logits= model(input_search)
         prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
         logging.info('REINFORCE [step %d]\t\tCurrent Max Architecture Reward %.4f\t\tAvarage Params %.3f', step, prec1/100, avg_params)
@@ -554,7 +589,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a):
 
     model.module.restore_super_net()
 
-def train(stage,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, training_arch = False):
+def train(stage,train_queue, valid_queue, model, network_params, criterion, optimizer, optimizer_a, cur_switches_normal, cur_switches_reduce, training_arch = False):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -563,7 +598,7 @@ def train(stage,train_queue, valid_queue, model, network_params, criterion, opti
         model.train()
         if training_arch:
             if step % model.module.rl_interval_steps == 0:
-                train_arch(stage, step, valid_queue, model, optimizer_a)
+                train_arch(stage, step, valid_queue, model, optimizer_a, cur_switches_normal, cur_switches_reduce)
 
         n = input.size(0)
         input = input.cuda()

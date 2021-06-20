@@ -153,23 +153,23 @@ class Network(nn.Module):
                     if self.forward_type == True:
                         weights = F.softmax(self.alphas_reduce, dim=0)
                     else:
-                        weights = self.sub_alphas_reduce
+                        weights = self.sub_weights_reduce
                 else:
                     if self.forward_type == True:  #  this
                         weights = F.softmax(self.alphas_reduce, dim=-1)
                     else:
-                        weights = self.sub_alphas_reduce
+                        weights = self.sub_weights_reduce
             else:
                 if self.alphas_normal.size(1) == 1:
                     if self.forward_type == True:
                         weights = F.softmax(self.alphas_normal, dim=0)
                     else:
-                        weights = self.sub_alphas_normal
+                        weights = self.sub_weights_normal
                 else:
                     if self.forward_type == True: # this
                         weights = F.softmax(self.alphas_normal, dim=-1)
                     else:
-                        weights = self.sub_alphas_normal
+                        weights = self.sub_weights_normal
             s0, s1 = s1, cell(s0, s1, weights)
             # print(weights)
         out = self.global_pooling(s1)
@@ -196,8 +196,8 @@ class Network(nn.Module):
         #     self.alphas_normal.data[i].normal_(0, 1e-3)
         #     self.alphas_reduce.data[i].normal_(0, 1e-3)
 
-        self.sub_alphas_normal =torch.FloatTensor(1e-3*np.random.randn(k, self.switch_normal_on))
-        self.sub_alphas_reduce =torch.FloatTensor(1e-3*np.random.randn(k, self.switch_reduce_on))
+        self.sub_weights_normal =torch.FloatTensor(1e-3*np.random.randn(k, self.switch_normal_on))
+        self.sub_weights_reduce =torch.FloatTensor(1e-3*np.random.randn(k, self.switch_reduce_on))
         # self.sub_alphas_normal =torch.FloatTensor(k, num_ops)
         # self.sub_alphas_reduce =torch.FloatTensor(k, num_ops)
 
@@ -244,20 +244,20 @@ class Network(nn.Module):
         self.reduce_log_prob = torch.log(torch.gather(reduce_probs,1,reduce_sample))
         return normal_sample, reduce_sample
 
-    def set_sub_net(self, switch_normal, switch_reduce):
-        for i in range(len(switch_normal)):
+    def set_sub_net(self, normal_sel_index, reduce_sel_index):
+        for i in range(len(normal_sel_index)):
             for j in range(self.switch_normal_on):
-                if switch_normal[i][j]:
-                    self.sub_alphas_normal[i][j] = 1.0
+                if j == normal_sel_index[i]:
+                    self.sub_weights_normal[i][j] = 1.0
                 else:
-                    self.sub_alphas_normal[i][j] = 0
+                    self.sub_weights_normal[i][j] = 0
 
-        for i in range(len(switch_reduce)):
+        for i in range(len(reduce_sel_index)):
             for j in range(self.switch_reduce_on):
-                if switch_reduce[i][j]:
-                    self.sub_alphas_reduce[i][j] = 1.0
+                if j == reduce_sel_index[i]:
+                    self.sub_weights_reduce[i][j] = 1.0
                 else:
-                    self.sub_alphas_reduce[i][j] = 0
+                    self.sub_weights_reduce[i][j] = 0
         self.forward_type = False
 
     def restore_super_net(self):
