@@ -299,7 +299,7 @@ parts  搜索出一个最大的网络  全是 conv 3X3 。
 
 29. 加入参数量的  惩罚    的搜索实验  先把 LR 设置为 1e-2 看效果  。   构建网络时，先不去做最优edge 选取  \subsection{Effect of the model compression}。 
 
-    一个 alpha = 0.0   ：  对比效果明显      search-try-20210616-172404
+    一个 alpha = 0.0   ：  对比效果明显      search-try-20210616-172404    ---  整个代码有问题  。swith normal index
 
     一个alpha = -0.2   :  压缩效果明显   search-try-20210616-172415
 
@@ -307,25 +307,160 @@ parts  搜索出一个最大的网络  全是 conv 3X3 。
     
     **上面编码存在问题。** 
     
-30. 解决上述编码问题，对比实验：
+30. 解决上述编码问题，对比实验： （当前LR 是 1e-2）  8
 
     一个alpha = -0.2   （pdarts_modify）:  还是原来的get_max_model的编码方式   search-try-20210619-223622
 
     ![image-20210620101634067](EXP/image-20210620101634067.png)
 
-    alpha = -0.2 （pdarts）： 修改代码后的实验   search-try-20210619-235535
+    alpha = -0.2 （pdarts）： 修改代码后的实验    search-try-20210620-112958
 
-    alpha = 0.0 （pdarts）： 修改代码后的实验 
+    ![image-20210620172000871](EXP/image-20210620172000871.png)
+
+    修改所有bug 后：
+
+    alpha = -0.2 （pdarts）:   search-try-20210620-173010
+
+    ![image-20210621211515438](EXP/image-20210621211515438.png)
+    
+    ```
+    2021-06-21 20:23:05,483 Genotype(normal=[('conv 1x1', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('conv_3x1_1x3', 0), ('conv 3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 0), ('avg_pool_3x3', 3), ('max_pool_3x3', 2), ('max_pool_3x3', 3)], reduce_concat=range(2, 6))
+    ```
+    
+    
+    
+    分析： 惩罚系数不够 ？？？？ 
+    
+    alpha = 0.0 （pdarts_modify）：   search-try-20210620-173112
+
+![image-20210621122035993](EXP/image-20210621122035993.png)
 
 
 
+alpha = -0.4  （pdarts_modify） search-try-20210621-153804
+
+![image-20210621222740249](EXP/image-20210621222740249.png)
+
+alpha = -0.25   (pdarts_modify)   search-try-20210621-222642
+
+![image-20210623125450846](EXP/image-20210623125450846.png)
+
+```
+2021-06-23 02:26:40,780 Genotype(normal=[('conv 1x1', 0), ('conv 1x1', 1), ('skip_connect', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('conv_3x1_1x3', 0), ('conv 3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_5x5', 0), ('skip_connect', 2), ('max_pool_5x5', 1), ('avg_pool_3x3', 3)], reduce_concat=range(2, 6))
+```
+
+alpha = -0.3 (pdarts)  search-try-20210621-212105     -- 最终的模型大小是： 5.52M 
+
+![image-20210623125510031](EXP/image-20210623125510031.png)
+
+```
+2021-06-23 00:54:27,416 Genotype(normal=[('conv 3x3', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 1x1', 1), ('sep_conv_3x3', 0), ('conv 1x1', 2), ('conv 1x1', 0), ('dil_conv_3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('avg_pool_3x3', 1), ('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 2), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+```
 
 
 
+ alpha = -0.4  pdarts    search-try-20210623-125949
 
-29. pdarts  original 的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1    .   
-30. 确认  pdarts_modify  环境跑的慢，是否是torch 等conda 环境问题， 新建了pdart_conda 
-31. 
+模型压缩非常好， 压到了1.5M ， 但是全出现skip-connection      --- 停掉，没有意义 。  
+
+
+
+分析： 学习率 太大， 降低学习率尝试 ？？？ 
+
+alpha = -0.3   pdarts_modify    **LR=1E-3**    **search-try-20210623-151622**     ---是希望 
+
+--------max_reward_0/1 不上升  ，很低 30+，   大量收敛于  skip-connection   ，conv 1x1 和  conv3X3 较多， 第一个stage 以后， conv3x3 剩下 5个。 
+
+![image-20210624172752594](EXP/image-20210624172752594.png)
+
+alpha = -0.4  pdarts    LR=1E-3   **search-try-20210623-212718**
+
+------- max_reward_0/1 不上升  ，很低 30+，   skip-connection 和none 比较多， 第一个stage 后， conv3x3剩下3个。 
+
+![image-20210624172815376](EXP/image-20210624172815376.png)
+
+
+
+31. 修改为划分stage 的超参   --需要第一步把 conv3X3 DEL, 后面 放开 压缩效果。
+
+    pdarts  **search-try-20210624-173641**  lr=5e-3      P_base = [6.4, 5.4, 4.4]      alpha = [-0.45, -0.25, -0.2]
+
+    分析： 压缩到3.9 M    stage  2的 max_reward  表现还可以。    --- LR 相对更合适一些。 
+    
+    ```
+    2021-06-25 11:51:02,715 Genotype(normal=[('conv 1x1', 0), ('conv 1x1', 1), ('sep_conv_3x3', 0), ('conv 1x1', 1), ('skip_connect', 0), ('skip_connect', 1), ('skip_connect', 0), ('conv 3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('skip_connect', 1), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_3x3', 0), ('max_pool_5x5', 3), ('max_pool_5x5', 1), ('avg_pool_3x3', 2)], reduce_concat=range(2, 6))
+    ```
+    
+      --- 摸底效果为 96.8% 
+    
+    pdarts_modify  **search-try-20210624-173637**  lr = 3e-3    P_base = [6.4, 5.4, 4.4]  alpha = [-0.45, -0.25, -0.2]
+    
+    分析： 压缩到2.8 M     max_reward表现很差  。  skip-connection 太多
+    
+    ```
+    2021-06-25 12:44:37,893 Genotype(normal=[('skip_connect', 0), ('skip_connect', 1), ('skip_connect', 0), ('conv_3x1_1x3', 1), ('skip_connect', 0), ('conv 1x1', 1), ('skip_connect', 0), ('skip_connect', 1)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 0), ('skip_connect', 2), ('avg_pool_3x3', 2), ('avg_pool_3x3', 3), ('max_pool_5x5', 0), ('avg_pool_3x3', 3)], reduce_concat=range(2, 6))
+    ```
+
+
+
+**调参 ：** 
+
+32. 发现了 skip -connect  delete 的bug  ， 修改。 同时修改超参 为 P_base = [6.4, 5.4, 4.4]  alpha = [-0.45, -0.10, -0.10] ， 限制stage1 压缩效果   没有dropout_rate 
+
+    ![image-20210627150051207](EXP/image-20210627150051207.png)
+
+    ```
+    2021-06-26 07:46:20,554 Genotype(normal=[('skip_connect', 0), ('skip_connect', 1), ('skip_connect', 0), ('skip_connect', 1), ('skip_connect', 2), ('skip_connect', 3), ('skip_connect', 2), ('skip_connect', 3)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 1), ('skip_connect', 2), ('skip_connect', 1), ('avg_pool_3x3', 3), ('max_pool_5x5', 0), ('max_pool_3x3', 1)], reduce_concat=range(2, 6))
+    ```
+
+    模型才 。1.23 M   太小了。    
+
+33. 启动 **search-try-20210624-173641**  架构的性能摸底，共3.7 M 参数量     --- 摸底效果为 96.8% 
+
+    
+
+34. search-try-20210627-151245  pdarts 保持超参为 P_base = [6.4, 5.4, 4.4]  alpha = [-0.45, -0.10, -0.10] ， 限制stage1 压缩效果   dropout_rate  为   0.3， 0.6 ， 0.8 
+
+    ![image-20210628191124077](EXP/image-20210628191124077.png)
+
+    ```
+    2021-06-28 09:22:32,092 Genotype(normal=[('conv 1x1', 0), ('sep_conv_3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('skip_connect', 0), ('conv 1x1', 1)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('avg_pool_3x3', 1), ('max_pool_7x7', 0), ('max_pool_3x3', 2), ('skip_connect', 1), ('max_pool_3x3', 3), ('max_pool_5x5', 0), ('max_pool_5x5', 2)], reduce_concat=range(2, 6))
+    ```
+
+    **---- 5.36MB  ** 摸底结果为 97.25 % 
+
+35. search-try-20210627-151940  pdarts_modify  保持超参为 P_base = [6.4, 5.4, 4.4]  alpha = [-0.4, -0.15, -0.15] ， 限制stage1 压缩效果  dropout_rate  为   0.3， 0.6 ， 0.8 
+
+    ![image-20210628190850228](EXP/image-20210628190850228.png)
+
+```
+2021-06-28 10:58:53,871 Genotype(normal=[('conv 1x1', 0), ('conv_3x1_1x3', 1), ('skip_connect', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 3x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 0), ('max_pool_3x3', 2), ('max_pool_3x3', 0), ('avg_pool_3x3', 3), ('max_pool_5x5', 0), ('skip_connect', 1)], reduce_concat=range(2, 6))
+---共有3个3X3 , 模型很大。 
+```
+
+36. search-try-20210628-192621 pdarts_modify  保持超参为 P_base = [6.4, 5.4, 4.4]    alpha = [-0.45, -0.25, -0.2]   dropout_rate  为   0.3， 0.6 ， 0.8   -- -又限制skip-connection 又限制压缩效果。 
+
+    ![image-20210630203339788](EXP/image-20210630203339788.png)
+
+    ```
+    2021-06-29 13:48:12,391 Genotype(normal=[('conv 1x1', 0), ('sep_conv_3x3', 1), ('skip_connect', 0), ('conv 3x3', 1), ('skip_connect', 0), ('conv 1x1', 1), ('skip_connect', 0), ('conv_3x1_1x3', 1)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_7x7', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 0), ('max_pool_7x7', 3), ('max_pool_7x7', 0), ('max_pool_3x3', 1)], reduce_concat=range(2, 6))
+    ```
+
+    ---- 改 conv 3X3 为  dil_conv_3X3,  得到 3.2M 性能摸底结果： **97.1 %**
+
+    37. search-try-20210630-204215 pdarts   alpha = [-0.45, -0.25, -0.35]    droprate 同上。 
+
+    38. search-try-20210628-192621 pdarts_modify   性能摸底 ， 减少通道数为 16 ：  
+
+    
+
+    
+
+    37. pdarts  original 的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1    .   
+
+38. 确认  pdarts_modify  环境跑的慢，是否是torch 等conda 环境问题， 新建了pdart_conda 
+
+39. 
 
 
 
@@ -444,3 +579,9 @@ and escaping  the local-optimal area  .
 
 
 1.  回答为什么选择渐进式的基线 。   逐步淘汰， 从宽而浅的网络， 到浅而深， 有效避免局部最优。 
+
+
+
+
+
+Towards non-differetiable metrics of progressive NAS by off-policy RL 

@@ -15,7 +15,7 @@ import torch.backends.cudnn as cudnn
 import copy
 from model_search import Network
 from model import NetworkCIFAR
-from genotypes import PRIMITIVES_NORMAL,PRIMITIVES_REDUCE
+from genotypes import PRIMITIVES_NORMAL,PRIMITIVES_REDUCE, NORMAL_SKIP_CONNECT_INDEX
 from genotypes import Genotype
 from art.metrics import clever_u,clever_t,clever
 from art.attacks.evasion import FastGradientMethod, ProjectedGradientDescent
@@ -39,7 +39,7 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=35, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
@@ -54,7 +54,7 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=6e-3, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -169,9 +169,11 @@ def main():
     switches_normal = copy.deepcopy(normal)
     switches_reduce = copy.deepcopy(reduce)
 
-    eps_no_archs = [20, 20, 20]
+    #switches_normal = [[True, True, True, False, True, True, False, True, False, False], [False, True, True, False, False, True, False, True, True, True], [False, True, True, False, True, True, True, True, False, False], [False, True, True, False, False, False, True, True, True, True], [True, True, False, False, True, True, True, True, False, False], [True, True, True, False, True, True, False, True, False, False], [True, True, False, True, True, False, False, True, True, False], [True, True, False, True, True, True, False, True, False, False], [True, False, True, True, True, True, True, False, False, False], [True, True, False, True, False, True, False, True, False, True], [False, True, False, True, False, True, False, True, True, True], [True, True, True, False, False, True, True, True, False, False], [True, False, True, True, True, True, True, False, False, False], [True, False, False, True, True, True, True, True, False, False]]
+    #switches_reduce = [[True, False, True, False, True, True], [True, True, True, True, False, False], [True, False, True, False, True, True], [True, True, True, True, False, False], [False, True, True, True, True, False], [True, False, True, False, True, True], [False, False, True, True, True, True], [False, True, True, True, True, False], [False, True, True, True, True, False], [True, False, True, False, True, True], [True, True, True, True, False, False], [False, True, True, True, True, False], [False, False, True, True, True, True], [True, False, True, True, True, False]]
+    # eps_no_archs = [20, 20, 20]
     # eps_no_archs = [5, 5, 5]
-    # eps_no_archs = [15, 15, 15]
+    eps_no_archs = [15, 15, 15]
     # eps_no_archs = [1, 1, 1]
     # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
@@ -322,7 +324,7 @@ def main():
                 if not i in keep_reduce:
                     for j in range(len(PRIMITIVES_REDUCE)):
                         switches_reduce[i][j] = False
-            # translate switches into genotype
+            # translate switches into genotypep
             genotype = parse_network(switches_normal, switches_reduce)
             logging.info(genotype)
             ## restrict skipconnect (normal cell only)
@@ -508,7 +510,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a, cur_switches_normal
         # take out gradient dict
         normal_grad_buffer.append(model.module._arch_parameters[0].grad.data.clone())
         reduce_grad_buffer.append(model.module._arch_parameters[1].grad.data.clone())
-        reward = calculate_reward(prec1, params)
+        reward = calculate_reward(stage, prec1, params)
         reward_buffer.append(reward)
         # recode best_reward index
         if prec1 > best_prec1:
@@ -637,7 +639,7 @@ def infer(valid_queue, model, criterion):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
-    model.eval()
+    # model.eval()
 
     for step, (input, target) in enumerate(valid_queue):
         input = input.cuda()
@@ -660,16 +662,19 @@ def infer(valid_queue, model, criterion):
 a = 1
 # b = 0.0
 # c = 1
-P_base = 3.4
+P_base = [6.4, 5.4, 4.4]
 # D_base = 0.8
 # F_base = 1.4
-alpha = -0.2
+# alpha = -0.2
+# alpha = -0.3
+# alpha = [-0.45, -0.10, -0.10]
+alpha = [-0.45, -0.25, -0.35]
 # beta = -0.4
 # gamma = -0.6
 
-def calculate_reward(prec1, params):
+def calculate_reward(stage, prec1, params):
 
-    mo_params_coe = a * math.pow(params/P_base, alpha)   #params M
+    mo_params_coe = a * math.pow(params/P_base[stage], alpha[stage])   #params M
     # mo_delay_coe = b * math.pow(delay/D_base, beta)  #inference delay S
     # mo_flops_coe = c * math.pow(flops/F_base, gamma)    # flops G
     # reward = prec1 * ( mo_params_coe +  mo_delay_coe + mo_flops_coe)
@@ -751,14 +756,15 @@ def logging_switches(switches, reduction = False):
 def check_sk_number(switches):
     count = 0
     for i in range(len(switches)):
-        if switches[i][3]:
+        # if switches[i][3]:
+        if switches[i][NORMAL_SKIP_CONNECT_INDEX]:
             count = count + 1
     
     return count
 
 def delete_min_sk_prob(switches_in, switches_bk, probs_in):
     def _get_sk_idx(switches_in, switches_bk, k):
-        if not switches_in[k][3]:
+        if not switches_in[k][NORMAL_SKIP_CONNECT_INDEX]:
             idx = -1
         else:
             idx = 0
@@ -817,8 +823,12 @@ def keep_2_branches(switches_in, probs):
     return switches  
 
 if __name__ == '__main__':
-    start_time = time.time()
-    main() 
-    end_time = time.time()
-    duration = end_time - start_time
-    logging.info('Total searching time: %ds', duration)
+    # start_time = time.time()
+    # main()
+    # end_time = time.time()
+    # duration = end_time - start_time
+    # logging.info('Total searching time: %ds', duration)
+    switches_normal = [[False, False, True, False, False, False, False, False, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, True, False, False, False], [False, False, False, False, False, False, False, True, False, False]]
+    switches_reduce = [[False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, False, False, False, True], [False, False, False, True, False, False], [False, False, False, True, False, False], [False, False, False, False, False, True], [False, False, False, True, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, False, False, True, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False]]
+    genotype = parse_network(switches_normal, switches_reduce)
+    logging.info(genotype)
