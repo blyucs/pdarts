@@ -261,7 +261,8 @@ def main():
             for j in range(len(PRIMITIVES_NORMAL)):
                 if switches_normal[i][j]:
                     idxs.append(j)
-            if sp == len(num_to_keep) - 1:
+            # if sp == len(num_to_keep) - 1:
+            if 0:
                 # for the last stage, drop all Zero operations
                 drop = get_min_k_no_zero(normal_prob[i, :], idxs, normal_num_to_drop[sp])
             else:
@@ -274,7 +275,8 @@ def main():
             for j in range(len(PRIMITIVES_REDUCE)):
                 if switches_reduce[i][j]:
                     idxs.append(j)
-            if sp == len(num_to_keep) - 1:
+            # if sp == len(num_to_keep) - 1:
+            if 0:
                 drop = get_min_k_no_zero(reduce_prob[i, :], idxs, reduce_num_to_drop[sp])
             else:
                 drop = get_min_k(reduce_prob[i, :], reduce_num_to_drop[sp])
@@ -284,8 +286,10 @@ def main():
         logging_switches(switches_normal, reduction = False)
         logging.info('switches_reduce = %s', switches_reduce)
         logging_switches(switches_reduce, reduction = True)
-        
-        if sp == len(num_to_keep) - 1:
+        genotype = parse_network(switches_normal, switches_reduce)
+        logging.info(genotype)
+        # if sp == len(num_to_keep) - 1:
+        if 0:
             arch_param = model.module.arch_parameters()
             normal_prob = F.softmax(arch_param[0], dim=sm_dim).data.cpu().numpy()
             reduce_prob = F.softmax(arch_param[1], dim=sm_dim).data.cpu().numpy()
@@ -324,7 +328,7 @@ def main():
                 if not i in keep_reduce:
                     for j in range(len(PRIMITIVES_REDUCE)):
                         switches_reduce[i][j] = False
-            # translate switches into genotypep
+            # translate switches into genotype
             genotype = parse_network(switches_normal, switches_reduce)
             logging.info(genotype)
             ## restrict skipconnect (normal cell only)
@@ -668,7 +672,8 @@ P_base = [6.4, 5.4, 4.4]
 # alpha = -0.2
 # alpha = -0.3
 # alpha = [-0.45, -0.10, -0.10]
-alpha = [-0.45, -0.25, -0.35]
+# alpha = [-0.45, -0.25, -0.35]
+alpha = [-0.45, -0.2, -0.25]
 # beta = -0.4
 # gamma = -0.6
 
@@ -697,7 +702,8 @@ def parse_network(switches_normal, switches_reduce):
             for j in range(start, end):
                 for k in range(len(switches[j])):
                     if switches[j][k]:
-                        gene.append((PRIMITIVES[k], j - start))
+                        if PRIMITIVES[k] != 'none':
+                            gene.append((PRIMITIVES[k], j - start))
             start = end
             n = n + 1
         return gene
@@ -823,12 +829,14 @@ def keep_2_branches(switches_in, probs):
     return switches  
 
 if __name__ == '__main__':
-    # start_time = time.time()
-    # main()
-    # end_time = time.time()
-    # duration = end_time - start_time
-    # logging.info('Total searching time: %ds', duration)
-    switches_normal = [[False, False, True, False, False, False, False, False, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, True, False, False, False], [False, False, False, False, False, False, False, True, False, False]]
-    switches_reduce = [[False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, False, False, False, True], [False, False, False, True, False, False], [False, False, False, True, False, False], [False, False, False, False, False, True], [False, False, False, True, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, False, False, True, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False]]
-    genotype = parse_network(switches_normal, switches_reduce)
-    logging.info(genotype)
+    start_time = time.time()
+    main()
+    end_time = time.time()
+    duration = end_time - start_time
+    logging.info('Total searching time: %ds', duration)
+    # switches_normal = [[False, False, True, False, False, False, False, False, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, True, False, False, False, False], [False, False, False, False, False, False, True, False, False, False], [False, False, False, False, False, False, False, True, False, False]]
+    # switches_reduce = [[False, False, True, False, False, False], [False, False, True, False, False, False], [False, False, False, False, False, True], [False, False, False, True, False, False], [False, False, False, True, False, False], [False, False, False, False, False, True], [False, False, False, True, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, False, False, True, False, False], [False, False, True, False, False, False], [False, False, False, False, True, False]]
+    # switches_normal = [[False, False, True, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, True, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, False, True, False], [True, False, False, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, True, False, False], [True, False, False, False, False, False, False, False, False, False], [False, False, True, False, False, False, False, False, False, False], [False, False, False, False, False, False, False, True, False, False], [False, False, False, False, False, False, False, False, False, True], [True, False, False, False, False, False, False, False, False, False], [False, False, False, False, False, True, False, False, False, False], [True, False, False, False, False, False, False, False, False, False]]
+    # switches_reduce = [[False, False, True, False, False, False], [False, False, False, False, True, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, False, False, False, True, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, True, False, False, False, False], [False, False, False, False, True, False], [False, False, True, False, False, False], [False, True, False, False, False, False], [False, False, False, True, False, False], [False, False, True, False, False, False], [True, False, False, False, False, False]]
+    # genotype = parse_network(switches_normal, switches_reduce)
+    # logging.info(genotype)

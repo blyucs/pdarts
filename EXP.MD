@@ -448,27 +448,61 @@ alpha = -0.4  pdarts    LR=1E-3   **search-try-20210623-212718**
 
     ---- 改 conv 3X3 为  dil_conv_3X3,  得到 3.2M 性能摸底结果： **97.1 %**
 
-    37. search-try-20210630-204215 pdarts   alpha = [-0.45, -0.25, -0.35]    droprate 同上。 
+    37. search-try-20210630-204215  pdarts   alpha = [-0.45, -0.25, -0.35]    droprate 同上。 
+
+        ![image-20210701144832404](EXP/image-20210701144832404.png)
 
     38. search-try-20210628-192621 pdarts_modify   性能摸底 ， 减少通道数为 16 ：  
 
-    
+        ------  **valid  acc  96. 3 %** 
 
-    
+    39. search   实现端到端的，alpha = [-0.45, -0.25, -0.35]  不做zero skip-connection 的remove 。 
 
-    37. pdarts  original 的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1    .   
+        ![image-20210702110509452](EXP/image-20210702110509452.png)
 
-38. 确认  pdarts_modify  环境跑的慢，是否是torch 等conda 环境问题， 新建了pdart_conda 
+    分析： 压缩太厉害了。     
 
-39. 
+37.   search-try-20210702-163552  pdarts_original   的搜索 ， 改变搜索空间， 增加conv 3X3、 CONV 1x3_3x1       -- --- 看是否会收敛到 conv  3X3   
 
+​    ----  似乎并没有
 
-
-
-
-
+进一步 ， 修改drop 问题， 再进行一次实验。  search-try-20210703-174600    pdarts_original   
 
 
+
+38.   pdarts  search-try-20210702-112143     alpha = [-0.45, -0.2, -0.25]    结果还可以。 待摸底性能 
+
+ 07/03 06:05:49 PM Genotype(normal=[('sep_conv_3x3', 0), ('conv 1x1', 1), ('skip_connect', 0), ('conv 3x3', 1), ('conv 1x1', 0), ('conv 1x1', 1), ('sep_conv_3x3', 3), ('conv 1x1', 0), ('conv_3x1_1x3', 1), ('dil_conv_3x3', 3)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_5x5', 1), ('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 2), ('max_pool_5x5', 0), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_5x5', 3), ('max_pool_3x3', 0), ('skip_connect', 1), ('avg_pool_3x3', 2), ('max_pool_3x3', 3)], reduce_concat=range(2, 6))
+
+![image-20210703181403200](EXP/image-20210703181403200.png)
+
+当channel 数为 16 时， ---   模型大小为1.0M  , 效果为 96.4% 。 比pdarts 低了一个点 。 
+
+**当channel 数为 24时，eval-try-20210705-143208  ---   模型大小为2.4M，  96.8%**
+
+**当channel 数为 36时，eval-try-20210705-143315  ---   模型大小为5.4M ，  97.24%**
+
+39. 做一个original 的params， 和flops 的监控。 呈现一个逐步上升的趋势。  ---- 而这个过程除了修改搜索空间，是无法解决的。 因为不可微。 
+
+![image-20210706103700665](EXP/image-20210706103700665.png)
+
+----  失败， 没有如预期，模型持续增加， 只是增加到  未裁剪的5.9M 
+
+search-try-20210706-103444  **pdarts_original** 继续实验端到端的。 ---  还是以36 个channel 为例 。 
+
+---- 失败， drop不够。 没有产生出最终架构。  
+
+
+
+40. 端到端搜索， pdarts_modify      [0.3,0.6,0.8 ]    layer  5 - 13 -- 20  batchsize 196 channel = 24 
+
+---- 失败，显存爆了。 
+
+41.  端到端搜索 ，  search-try-20210707-114916  pdarts_modify      [0.3,0.6,0.8 ]    layer  5 - 13 -- 20  batchsize 196 channel = 24 
+
+
+
+42. CIFAR100 搜索   和  training  
 
 
 
@@ -585,3 +619,11 @@ and escaping  the local-optimal area  .
 
 
 Towards non-differetiable metrics of progressive NAS by off-policy RL 
+
+
+
+
+
+```
+normal=[('skip_connect', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 0), ('sep_conv_3x3', 1), ('sep_conv_3x3', 2), ('dil_conv_5x5', 3)], normal_concat=range(2, 6), reduce=[('dil_conv_3x3', 0), ('skip_connect', 1), ('skip_connect', 0), ('dil_conv_5x5', 2), ('avg_pool_3x3', 1), ('dil_conv_5x5', 3), ('dil_conv_5x5', 0), ('sep_conv_5x5', 2)], reduce_concat=range(2, 6)
+```

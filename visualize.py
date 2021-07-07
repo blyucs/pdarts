@@ -13,7 +13,7 @@ def plot(genotype, filename):
 
   g.node("c_{k-2}", fillcolor='darkseagreen2')
   g.node("c_{k-1}", fillcolor='darkseagreen2')
-  assert len(genotype) % 2 == 0
+  # assert len(genotype) % 2 == 0
   steps = len(genotype) // 2
 
   for i in range(steps):

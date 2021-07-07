@@ -16,6 +16,8 @@ import torch.backends.cudnn as cudnn
 from torch.autograd import Variable
 from model import NetworkCIFAR as Network
 
+# os.environ["CUDA_VISIBLE_DEVICES"]="0,1"   # batchsize
+os.environ["CUDA_VISIBLE_DEVICES"]="2,3"   # batchsize
 
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
@@ -34,7 +36,7 @@ parser.add_argument('--cutout_length', type=int, default=16, help='cutout length
 parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path probability')
 parser.add_argument('--save', type=str, default='EXP/checkpoints/', help='experiment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
-parser.add_argument('--arch', type=str, default='SEARCH_TEST_20210630_204215', help='which architecture to use')
+parser.add_argument('--arch', type=str, default='SEARCH_TEST_20210702_112143', help='which architecture to use')
 # parser.add_argument('--arch', type=str, default='PDARTS', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
