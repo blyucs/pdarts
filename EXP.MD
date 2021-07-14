@@ -498,11 +498,20 @@ search-try-20210706-103444  **pdarts_original** 继续实验端到端的。 --- 
 
 ---- 失败，显存爆了。 
 
-41.  端到端搜索 ，  search-try-20210707-114916  pdarts_modify      [0.3,0.6,0.8 ]    layer  5 - 13 -- 20  batchsize 196 channel = 24 
+------ 压缩不明显， 全留下  conv3X3   --- 修改 weights LR 和  arch LR  ，加大压缩
+
+41.  端到端搜索 ，  search-try-20210707-114916  pdarts_modify      [0.3,0.6,0.8 ]    layer  5 - 13 -- 20  batchsize 196 channel = 24    - -- 待确认，get_min_no_zero 是否要忽略？
 
 
 
 42. CIFAR100 搜索   和  training  
+
+    惩罚不够 ，学习率也不够。 max_arch 效果不够   --- ARCH LR 1E-2  加大压缩
+
+
+
+43. pdarts_modify cifar10 惩罚太强， 修改基数， 修改预训练为8   RL 也为8 
+44. pdarts  CIFAR100  惩罚不够 ， 加大系数？ 
 
 
 

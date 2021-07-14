@@ -30,8 +30,8 @@ import math
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
 # parser.add_argument('--batch_size', type=int, default=96, help='batch size')
-parser.add_argument('--batch_size', type=int, default=256, help='batch size')
-# parser.add_argument('--batch_size', type=int, default=32, help='batch size')
+# parser.add_argument('--batch_size', type=int, default=256, help='batch size')
+parser.add_argument('--batch_size', type=int, default=64, help='batch size')
 # parser.add_argument('--batch_size', type=int, default=12, help='batch size')
 # parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
 parser.add_argument('--learning_rate', type=float, default=0.04, help='init learning rate')
@@ -39,9 +39,10 @@ parser.add_argument('--learning_rate_min', type=float, default=0.0, help='min le
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=20, help='report frequency')
-parser.add_argument('--epochs', type=int, default=25, help='num of training epochs')
+parser.add_argument('--epochs', type=int, default=16, help='num of training epochs')
 # parser.add_argument('--epochs', type=int, default=2, help='num of training epochs')
-parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
+# parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
+parser.add_argument('--init_channels', type=int, default=24, help='num of init channels')
 parser.add_argument('--layers', type=int, default=5, help='total number of layers')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
 parser.add_argument('--cutout_length', type=int, default=16, help='cutout length')
@@ -54,7 +55,7 @@ parser.add_argument('--train_portion', type=float, default=0.5, help='portion of
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=5e-3, help='learning rate for arch encoding')
 # parser.add_argument('--arch_learning_rate', type=float, default=6e-4, help='learning rate for arch encoding')
-parser.add_argument('--arch_learning_rate', type=float, default=6e-3, help='learning rate for arch encoding')
+parser.add_argument('--arch_learning_rate', type=float, default=1e-2, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
 # parser.add_argument('--arch_weight_decay', type=float, default=0, help='weight decay for arch encoding')
 parser.add_argument('--tmp_data_dir', type=str, default='data/', help='temp data dir')
@@ -62,11 +63,11 @@ parser.add_argument('--note', type=str, default='try', help='note for this run')
 parser.add_argument('--dropout_rate', action='append', default=[], help='dropout rate of skip connect')
 parser.add_argument('--add_width', action='append', default=['0'], help='add channels')
 parser.add_argument('--add_layers', action='append', default=['0'], help='add layers')
-parser.add_argument('--cifar100', action='store_true', default=False, help='search with cifar100 dataset')
+parser.add_argument('--cifar100', action='store_true', default=True, help='search with cifar100 dataset')
 
 args = parser.parse_args()
 
-args.save = '{}search-{}-{}'.format(args.save, args.note, time.strftime("%Y%m%d-%H%M%S"))
+args.save = '{}search-{}-{}-{}'.format(args.save, args.cifar100, args.note, time.strftime("%Y%m%d-%H%M%S"))
 utils.create_exp_dir(args.save, scripts_to_save=glob.glob('*.py'))
 
 log_format = '%(asctime)s %(message)s'
@@ -99,7 +100,7 @@ else:
 # To be moved to args
 num_to_keep = [5, 3, 1]
 # num_to_drop = [3, 2, 2]
-normal_num_to_drop = [4, 3, 2]
+normal_num_to_drop = [3, 3, 2]
 # normal_num_to_drop = [3, 2, 2]
 reduce_num_to_drop = [2, 2, 1]
 # handler = SummaryWriter(log_dir=args.save)
@@ -173,7 +174,8 @@ def main():
     #switches_reduce = [[True, False, True, False, True, True], [True, True, True, True, False, False], [True, False, True, False, True, True], [True, True, True, True, False, False], [False, True, True, True, True, False], [True, False, True, False, True, True], [False, False, True, True, True, True], [False, True, True, True, True, False], [False, True, True, True, True, False], [True, False, True, False, True, True], [True, True, True, True, False, False], [False, True, True, True, True, False], [False, False, True, True, True, True], [True, False, True, True, True, False]]
     # eps_no_archs = [20, 20, 20]
     # eps_no_archs = [5, 5, 5]
-    eps_no_archs = [15, 15, 15]
+    # eps_no_archs = [15, 15, 15]
+    eps_no_archs = [8, 8, 8]
     # eps_no_archs = [1, 1, 1]
     # eps_no_archs = [0, 0, 0]
     for sp in range(len(num_to_keep)):
@@ -242,8 +244,8 @@ def main():
             epoch_duration = time.time() - epoch_start
             logging.info('Epoch time: %ds', epoch_duration)
             # validation
-            if epochs - epoch < 5:
-            # if 1:
+            # if epochs - epoch < 5:
+            if 0:
                 valid_acc, valid_obj = infer(valid_queue, model, criterion)
                 logging.info('Valid_acc %f', valid_acc)
         utils.save(model, os.path.join(args.save, 'weights.pt'))
@@ -487,7 +489,7 @@ def train_arch(stage, step, valid_queue, model, optimizer_a, cur_switches_normal
         with torch.no_grad():
             logits= model(input_search)
             prec1, _ = utils.accuracy(logits, target_search, topk=(1,5))
-        sub_model = NetworkCIFAR(36, CIFAR_CLASSES, 20, False, genotype)
+        sub_model = NetworkCIFAR(args.init_channels, CIFAR_CLASSES, 20, False, genotype)
         sub_model.drop_path_prob = 0
         # para0 = utils.count_parameters_in_MB(sub_model)
         input = torch.randn(1,3,32,32)
@@ -666,14 +668,14 @@ def infer(valid_queue, model, criterion):
 a = 1
 # b = 0.0
 # c = 1
-P_base = [6.4, 5.4, 4.4]
+P_base = [4.4, 3.2, 1.8]
 # D_base = 0.8
 # F_base = 1.4
 # alpha = -0.2
 # alpha = -0.3
 # alpha = [-0.45, -0.10, -0.10]
 # alpha = [-0.45, -0.25, -0.35]
-alpha = [-0.45, -0.2, -0.25]
+alpha = [-0.75, -0.75, -0.75]
 # beta = -0.4
 # gamma = -0.6
 
@@ -702,8 +704,7 @@ def parse_network(switches_normal, switches_reduce):
             for j in range(start, end):
                 for k in range(len(switches[j])):
                     if switches[j][k]:
-                        if PRIMITIVES[k] != 'none':
-                            gene.append((PRIMITIVES[k], j - start))
+                        gene.append((PRIMITIVES[k], j - start))
             start = end
             n = n + 1
         return gene

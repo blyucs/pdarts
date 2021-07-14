@@ -142,7 +142,7 @@ class Network(nn.Module):
         # self.baseline_decay_weight = 0.99
         self.baseline_decay_weight = 0.95
         self.rl_batch_size = 10
-        self.rl_interval_steps = 1
+        self.rl_interval_steps = 4
         self.epsilon = 0.0
     def forward(self, input):
         # print("fuck %d" % self.forward_type)
