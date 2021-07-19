@@ -500,6 +500,8 @@ search-try-20210706-103444  **pdarts_original** 继续实验端到端的。 --- 
 
 ------ 压缩不明显， 全留下  conv3X3   --- 修改 weights LR 和  arch LR  ，加大压缩
 
+
+
 41.  端到端搜索 ，  search-try-20210707-114916  pdarts_modify      [0.3,0.6,0.8 ]    layer  5 - 13 -- 20  batchsize 196 channel = 24    - -- 待确认，get_min_no_zero 是否要忽略？
 
 
@@ -510,10 +512,107 @@ search-try-20210706-103444  **pdarts_original** 继续实验端到端的。 --- 
 
 
 
-43. pdarts_modify cifar10 惩罚太强， 修改基数， 修改预训练为8   RL 也为8 
-44. pdarts  CIFAR100  惩罚不够 ， 加大系数？ 
+43. pdarts_modify cifar10 惩罚太强， 修改基数， 修改预训练为8   RL 也为8   search-try-20210713-091404  --- **模型为2.4M 基本符合预期**
+
+    ```
+    2021-07-14 09:42:07,059 Genotype(normal=[('conv_3x1_1x3', 0), ('dil_conv_3x3', 1), ('conv 3x3', 0), ('dil_conv_3x3', 1), ('none', 2), ('dil_conv_3x3', 0), ('dil_conv_3x3', 1), ('none', 2), ('none', 3), ('conv_3x1_1x3', 0), ('dil_conv_3x3', 1), ('none', 2), ('dil_conv_3x3', 3), ('none', 4)], normal_concat=range(2, 6), reduce=[('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 0), ('max_pool_5x5', 1), ('avg_pool_3x3', 2), ('avg_pool_3x3', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 2), ('max_pool_3x3', 3), ('max_pool_3x3', 0), ('max_pool_3x3', 1), ('none', 2), ('none', 3), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+    ```
+
+44. pdarts  CIFAR100  惩罚不够 ， 加大系数？    ---  （0.75,0.75,0.75）的惩罚系数仍然没有压缩效果
+
+    继续修改压缩系数为 （-0.75，-0.85，-0.85）进行搜索实验。  --  **用于搜索。** **--  仍然不理想，模型为4.7M。** 
+
+    修改reference 为 [4.4, 3.2, 2.5], coeffeicient 为 [-0.95, -1, -1]  , 重启搜索 **search-True-try-20210715-143023** 。   ---- **压缩效果可以 ，模型大小为3.2 M ， 计划进行训练。** 
+
+    ```
+    2021-07-16 13:20:54,979 Genotype(normal=[('conv 3x3', 0), ('sep_conv_3x3', 1), ('conv 3x3', 0), ('skip_connect', 1), ('dil_conv_3x3', 2), ('skip_connect', 0), ('dil_conv_3x3', 1), ('sep_conv_3x3', 2), ('dil_conv_3x3', 3), ('conv_3x1_1x3', 0), ('skip_connect', 1), ('sep_conv_3x3', 2), ('none', 3), ('none', 4)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 0), ('max_pool_5x5', 1), ('skip_connect', 2), ('max_pool_3x3', 0), ('skip_connect', 1), ('skip_connect', 2), ('none', 3), ('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_7x7', 2), ('none', 3), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+    ```
+
+**PDARTS_CIFAR100_TEST_0715**
 
 
+
+
+45. pdarts_modify    --- 惩罚系数全部为0  对比试验，用于论文图形绘制。   -**-- 计划长期用于实验**    --done
+
+    
+
+46. pdarts_training （**19 服务器，计划长期用于training**）
+    1. 启动了CIFAR10 的训练实验  --  基于43    ----   **2.64M/96.41%**     --  done
+    2. 启动了CIFAR100的训练实验 -- 基于44.     **--  5.78M /82.89%**    --- 还差的较远   --- done
+
+
+
+47. 新配置一套环境 pdarts_new， 用于图像绘制：
+    1.  **search-False-try-20210715-160559    --- max_para**   done
+    2. **search-False-try-20210715-184913    ---  min_para**     done
+
+48.    pdarts_modify  恢复conv 1X1卷积，  24 通道， bz 128 ，  epoch 25 ， pretrain 15  [4.4, 3.2, 1.8]   [ **-0.45, -0.25, -0.35]**     done -  全 CONV 1X1 conv 3x3
+
+```
+2021-07-16 13:06:37,967 Genotype(normal=[('conv 3x3', 0), ('conv 1x1', 1), ('conv 3x3', 0), ('conv 3x3', 1), ('none', 2), ('conv 1x1', 0), ('conv 3x3', 1), ('none', 2), ('none', 3), ('conv 1x1', 0), ('conv 1x1', 1), ('none', 2), ('none', 3), ('none', 4)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 0), ('max_pool_3x3', 1), ('skip_connect', 2), ('max_pool_3x3', 0), ('skip_connect', 1), ('max_pool_3x3', 2), ('max_pool_3x3', 3), ('avg_pool_3x3', 0), ('max_pool_7x7', 1), ('skip_connect', 2), ('avg_pool_3x3', 3), ('none', 4)], reduce_concat=range(2, 6))
+```
+
+49.   **pdarts_wnew**  恢复conv 1X1卷积，  24 通道， bz 128 ，  epoch 25 ， pretrain 15 [4.4, 3.2, 1.8]   **[ -0.45, -0.4, -0.4] **    done   全 CONV 1X1 conv 3x3
+
+```
+2021-07-16 13:05:47,958 Genotype(normal=[('conv 3x3', 0), ('conv 1x1', 1), ('conv 1x1', 0), ('conv 1x1', 1), ('conv 1x1', 2), ('conv 1x1', 0), ('conv 1x1', 1), ('conv 1x1', 2), ('none', 3), ('conv_3x1_1x3', 0), ('conv 1x1', 1), ('conv 1x1', 2), ('none', 3), ('none', 4)], normal_concat=range(2, 6), reduce=[('max_pool_7x7', 0), ('skip_connect', 1), ('max_pool_5x5', 0), ('max_pool_3x3', 1), ('max_pool_3x3', 2), ('max_pool_5x5', 0), ('skip_connect', 1), ('max_pool_3x3', 2), ('avg_pool_3x3', 3), ('avg_pool_3x3', 0), ('none', 1), ('skip_connect', 2), ('none', 3), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+```
+
+
+
+50. **pdarts_modify**  **搜索** search-try-20210716-145445    恢复成  pdarts  search-try-20210702-112143     alpha = [-0.45, -0.2, -0.25]  的水平 ， 再进行一次搜索。 ---  已搜索出结果  待训练
+
+    ```
+    2021-07-17 09:12:11,436 Genotype(normal=[('sep_conv_3x3', 0), ('skip_connect', 1), ('skip_connect', 0), ('conv 1x1', 1), ('none', 2), ('skip_connect', 0), ('skip_connect', 1), ('conv 1x1', 2), ('none', 3), ('skip_connect', 0), ('skip_connect', 1), ('none', 2), ('none', 3), ('none', 4)], normal_concat=range(2, 6), reduce=[('max_pool_7x7', 0), ('max_pool_3x3', 1), ('max_pool_5x5', 0), ('avg_pool_3x3', 1), ('max_pool_3x3', 2), ('max_pool_7x7', 0), ('avg_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_3x3', 3), ('max_pool_3x3', 0), ('none', 1), ('avg_pool_3x3', 2), ('avg_pool_3x3', 3), ('none', 4)], reduce_concat=range(2, 6))
+    ```
+
+ 
+
+dropout_rate=['0.3', '0.8', '0.9']，再训练一次.   search-try-20210717-202204  ：  --- 待训练
+
+
+```
+2021-07-18 11:56:07,676 Genotype(normal=[('sep_conv_3x3', 0), ('conv 1x1', 1), ('conv 1x1', 0), ('conv 3x3', 1), ('conv 1x1', 2), ('conv 1x1', 0), ('conv 1x1', 1), ('none', 2), ('sep_conv_3x3', 3), ('conv 1x1', 0), ('skip_connect', 1), ('dil_conv_5x5', 2), ('dil_conv_3x3', 3), ('none', 4)], normal_concat=range(2, 6), reduce=[('max_pool_3x3', 0), ('max_pool_3x3', 1), ('max_pool_7x7', 0), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_7x7', 0), ('max_pool_3x3', 1), ('avg_pool_3x3', 2), ('max_pool_5x5', 3), ('max_pool_3x3', 0), ('max_pool_5x5', 1), ('max_pool_5x5', 2), ('none', 3), ('avg_pool_3x3', 4)], reduce_concat=range(2, 6))
+```
+
+51.  **pdarts_training**   启动训练 
+    1. cifar 10 基于44.  search-True-try-20210715-143023  600 epoch      ----   done
+    2. cifar 100 基于 44  search-True-try-20210715-143023   600 epoch  ----  done
+
+
+
+52. **pdarts_wnew**   启动训练
+    1.  cifar 10  基于 search-try-20210702-112143  架构。16个channel  1.0M，  800 epoech ---  done
+    2.  cifar 10  基于 search-try-20210702-112143  架构。24个channel 2.4M，  800 epoech  --- done
+
+
+
+53. **pdarts** 启动训练 
+    1.  cifar 10 基于44.  search-True-try-20210715-143023  16 channel 1.41M， 800 epoch --- done
+    2. cifar 10 基于44.  search-True-try-20210715-143023  24 channel  3.12M， 800 epoch  --- done
+
+
+
+54. **pdarts_modify** **cifar10**  在43 实验的基础上，放开一些skip-connection 的抑制。search-try-20210718-221138  再启动一次搜索 :     (或许可以加大epoch 数量，当前16 有点小了 。 )
+
+
+
+
+
+55. 计划做CLEVER指标的实验 
+
+    
+
+
+
+
+
+贡献:
+
+1. 推出 S,M,L 三个模型，角度。  1.0M、 2.4M ， 3.8M 
+
+2. 
 
 06/15 06:41:03 PM ['50.994M', '44.219M', '54.656M', '44.555M', '55.291M', '48.983M', '55.729M', '40.619M', '52.112M', '70.229M']
 06/15 06:41:03 PM ['288.570K', '223.658K', '293.610K', '246.666K', '321.386K', '256.138K', '320.938K', '214.250K', '279.882K', '421.546K']
@@ -542,7 +641,14 @@ search-try-20210706-103444  **pdarts_original** 继续实验端到端的。 --- 
 
 
 
+图形原始数据整理：
 
+1.   search-try-20210713-091404   ---00_multinominal_and_max    --   XXX  ？ 
+   1.  **search-False-try-20210715-160559    --- max_para **       pdarts_wnew   192.168.123.131 wyx 
+   2. **search-False-try-20210715-184913    ---  min_para**     pdarts_wnew   192.168.123.131 wyx 
+   3. ​    search-try-20210714-152738  ----       compress_compare   0    pdarts_modify , 10.147.19.193 
+
+​                 search-try-20210713-091404 ---  compress_compare   -0.6     pdarts_modify , 10.147.19.193 
 
 
 

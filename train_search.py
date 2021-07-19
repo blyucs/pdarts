@@ -28,7 +28,7 @@ os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3"   # batchsize
 import math
 
 parser = argparse.ArgumentParser("cifar")
-parser.add_argument('--workers', type=int, default=2, help='number of workers to load dataset')
+parser.add_argument('--workers', type=int, default=8, help='number of workers to load dataset')
 # parser.add_argument('--batch_size', type=int, default=96, help='batch size')
 # parser.add_argument('--batch_size', type=int, default=256, help='batch size')
 parser.add_argument('--batch_size', type=int, default=64, help='batch size')
@@ -668,14 +668,14 @@ def infer(valid_queue, model, criterion):
 a = 1
 # b = 0.0
 # c = 1
-P_base = [4.4, 3.2, 1.8]
+P_base = [4.4, 3.2, 2.5]
 # D_base = 0.8
 # F_base = 1.4
 # alpha = -0.2
 # alpha = -0.3
 # alpha = [-0.45, -0.10, -0.10]
 # alpha = [-0.45, -0.25, -0.35]
-alpha = [-0.75, -0.75, -0.75]
+alpha = [-0.95, -1, -1]
 # beta = -0.4
 # gamma = -0.6
 
